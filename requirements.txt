@@ -7,6 +7,7 @@ google-generativeai==0.8.3
 # Vector Database & Embeddings
 # chromadb==0.5.23  # Requires C++ build tools - skip for testing
 # sentence-transformers==3.3.1
+qdrant-client==1.7.3
 
 # API Framework
 fastapi==0.115.6

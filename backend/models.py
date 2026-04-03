@@ -117,3 +117,26 @@ class HealthResponse(BaseModel):
 class ErrorResponse(BaseModel):
     detail: str
     timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+
+
+class MIMICPatientListItem(BaseModel):
+    """MIMIC-III patient list item for search results."""
+    model_config = ConfigDict(extra="allow")
+    
+    subject_id: int
+    hadm_id: int
+    admittime: str
+    diagnosis: str
+
+
+class MIMICPatientResponse(BaseModel):
+    """Response containing MIMIC-III patient data in agent format."""
+    model_config = ConfigDict(extra="allow")
+    
+    patient_id: str
+    admission_id: str
+    age: int
+    gender: str
+    admission_diagnosis: str
+    timeline: List[Dict[str, Any]] = Field(default_factory=list)
+    source: str = "mimic-iii-supabase"
