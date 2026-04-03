@@ -27,6 +27,10 @@ scipy>=1.10.0
 python-dotenv==1.0.1
 httpx==0.28.1
 tenacity==9.0.0
+httplib2>=0.22.0
+
+# Supabase Integration
+supabase>=2.0.0
 
 # Testing
 pytest==8.3.4

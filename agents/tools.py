@@ -14,9 +14,21 @@ from typing import Dict, List, Any, Optional, Callable
 from datetime import datetime
 import json
 
+# Secure API key loading
 try:
+    from utils.secure_api_key import load_gemini_api_key, test_gemini_connection
     import google.generativeai as genai
-except:
+    
+    # Configure Gemini with secure key loading
+    api_key = load_gemini_api_key()
+    if api_key:
+        genai.configure(api_key=api_key)
+        print("✅ Gemini API configured with secure key")
+    else:
+        print("⚠️ No Gemini API key found - using fallback mode")
+        genai = None
+except Exception as e:
+    print(f"⚠️ Gemini API setup failed: {e}")
     genai = None
 
 
