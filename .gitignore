@@ -33,3 +33,27 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# GCC Compiler binaries (DO NOT COMMIT)
+bin/
+lib/
+lib32/
+lib64/
+libexec/
+mingw/
+x86_64-w64-mingw32/
+include/
+share/gcc-14.2.0/
+!share/gcc-14.2.0/python/
+
+# GCC artifacts
+*.exe
+*.dll
+*.a
+*.o
+*.obj
+build-mingw64-64-posix.sh
+build-mingw64-64-posix-lto.sh
+copy-libs.sh
+gcc-14.2.0-mingw32.patch
+readme.txt
