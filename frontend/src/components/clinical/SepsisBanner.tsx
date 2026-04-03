@@ -24,8 +24,8 @@ export function SepsisBanner({ probability, status, lastCheck }: SepsisBannerPro
         className={cn(
           "w-full rounded-[2.5rem] p-8 relative overflow-hidden group transition-all duration-500",
           isCritical 
-            ? "bg-rose-600/5 backdrop-blur-xl border border-rose-200/50 shadow-2xl shadow-rose-500/10" 
-            : "bg-emerald-600/5 backdrop-blur-xl border border-emerald-200/50 shadow-2xl shadow-emerald-500/10"
+            ? "bg-rose-600/5 dark:bg-rose-500/10 backdrop-blur-xl border border-rose-200/50 dark:border-rose-500/30 shadow-2xl shadow-rose-500/10 dark:shadow-rose-900/30"
+            : "bg-emerald-600/5 dark:bg-emerald-500/10 backdrop-blur-xl border border-emerald-200/50 dark:border-emerald-500/30 shadow-2xl shadow-emerald-500/10 dark:shadow-emerald-900/30"
         )}
       >
         {/* Animated Background Pulse */}
@@ -37,7 +37,7 @@ export function SepsisBanner({ probability, status, lastCheck }: SepsisBannerPro
         <div className="flex flex-col md:flex-row items-center justify-between gap-8 relative z-10">
           <div className="flex items-center gap-6">
             <div className={cn(
-              "w-20 h-20 rounded-[2rem] flex items-center justify-center transition-transform group-hover:scale-110",
+              "w-20 h-20 rounded-4xl flex items-center justify-center transition-transform group-hover:scale-110",
               isCritical ? "bg-rose-600 text-white shadow-lg shadow-rose-200" : "bg-emerald-600 text-white shadow-lg shadow-emerald-200"
             )}>
               {isCritical ? <AlertTriangle size={40} strokeWidth={2.5} /> : <CheckCircle2 size={40} strokeWidth={2.5} />}
@@ -45,10 +45,10 @@ export function SepsisBanner({ probability, status, lastCheck }: SepsisBannerPro
             
             <div className="space-y-1">
               <div className="flex items-center gap-3">
-                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 dark:text-slate-500">
                   Primary Risk Assessment
                 </span>
-                <div className="flex gap-1 items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[8px] font-black uppercase tracking-widest">
+                <div className="flex gap-1 items-center px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 text-[8px] font-black uppercase tracking-widest">
                   <Activity size={10} /> Live Ingestion
                 </div>
               </div>
@@ -58,7 +58,7 @@ export function SepsisBanner({ probability, status, lastCheck }: SepsisBannerPro
               )}>
                 {isCritical ? "Sepsis Risk Detected" : "Stable: Low Risk"}
               </h1>
-              <p className="text-sm font-bold text-slate-500 max-w-md leading-relaxed">
+              <p className="text-sm font-bold text-slate-500 dark:text-slate-300 max-w-md leading-relaxed">
                 {isCritical 
                   ? "Clinical markers suggest immediate hemodynamic intervention. Elevated lactate and HR detected."
                   : "All clinical markers within normal thresholds. Patient is currently showing signs of recovery."
@@ -67,7 +67,7 @@ export function SepsisBanner({ probability, status, lastCheck }: SepsisBannerPro
             </div>
           </div>
 
-          <div className="flex items-center gap-8 bg-white/50 p-6 rounded-[2rem] border border-white/20 shadow-sm">
+          <div className="flex items-center gap-8 bg-white/50 dark:bg-slate-900/60 p-6 rounded-4xl border border-white/20 dark:border-slate-800 shadow-sm transition-colors duration-300">
             <div className="text-center space-y-1">
               <div className="flex items-center justify-center gap-1.5 translate-y-1">
                 <span className={cn(
@@ -76,9 +76,9 @@ export function SepsisBanner({ probability, status, lastCheck }: SepsisBannerPro
                 )}>
                   {probability}%
                 </span>
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Confidence Score</div>
+                <div className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">Confidence Score</div>
               </div>
-              <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden mt-2">
+              <div className="w-32 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mt-2">
                 <motion.div 
                   initial={{ width: 0 }}
                   animate={{ width: `${probability}%` }}
@@ -90,16 +90,16 @@ export function SepsisBanner({ probability, status, lastCheck }: SepsisBannerPro
               </div>
             </div>
 
-            <div className="h-12 w-px bg-slate-200/60" />
+            <div className="h-12 w-px bg-slate-200/60 dark:bg-slate-700" />
             
             <div className="space-y-1">
-              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">
+              <div className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">
                 Last Clinical Update
               </div>
-              <div className="text-xl font-black text-slate-800 tracking-tighter">
+              <div className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">
                 {lastCheck}
               </div>
-              <button className="flex items-center gap-1.5 text-[10px] font-black text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors">
+              <button className="flex items-center gap-1.5 text-[10px] font-black text-blue-600 dark:text-blue-300 uppercase tracking-widest hover:text-blue-700 dark:hover:text-blue-200 transition-colors">
                 <Info size={12} /> View Methodology
               </button>
             </div>

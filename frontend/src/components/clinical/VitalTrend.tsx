@@ -45,29 +45,29 @@ export function VitalTrend({ label, unit, color, data, className }: VitalTrendPr
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       className={cn(
-        "bg-white/60 backdrop-blur-md rounded-[2.5rem] p-8 border border-white/20 shadow-xl shadow-slate-200/20 group hover:shadow-2xl transition-all duration-500",
+        "bg-white/60 dark:bg-slate-900/70 backdrop-blur-md rounded-[2.5rem] p-8 border border-white/20 dark:border-slate-800 shadow-xl shadow-slate-200/20 dark:shadow-black/25 group hover:shadow-2xl transition-all duration-500",
         className
       )}
     >
       <div className="flex justify-between items-start mb-8">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center group-hover:bg-blue-600 transition-colors duration-500">
-            <Activity className="text-slate-400 group-hover:text-white transition-colors duration-500" size={24} />
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center group-hover:bg-blue-600 transition-colors duration-500">
+            <Activity className="text-slate-400 dark:text-slate-300 group-hover:text-white transition-colors duration-500" size={24} />
           </div>
           <div>
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{label}</h3>
+            <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">{label}</h3>
             <div className="flex items-baseline gap-1">
-              <span className="text-4xl font-black text-slate-900 tracking-tighter leading-none">
+              <span className="text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tighter leading-none">
                 {latestVal.toFixed(1)}
               </span>
-              <span className="text-sm font-black text-slate-400 uppercase opacity-60">{unit}</span>
+              <span className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase opacity-60">{unit}</span>
             </div>
           </div>
         </div>
         
         <div className={cn(
           "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest",
-          isUp ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
+          isUp ? "bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300" : "bg-rose-50 dark:bg-rose-500/15 text-rose-600 dark:text-rose-300"
         )}>
           {isUp ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
           {Math.abs(latestVal - prevVal).toFixed(1)} Delta
@@ -122,7 +122,7 @@ export function VitalTrend({ label, unit, color, data, className }: VitalTrendPr
 
         {data.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] flex items-center gap-2">
+            <span className="text-[10px] font-black text-slate-300 dark:text-slate-500 uppercase tracking-[0.3em] flex items-center gap-2">
               <Activity className="animate-pulse" size={14} /> Waiting for Patient Pulse...
             </span>
           </div>
