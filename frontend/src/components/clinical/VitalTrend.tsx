@@ -1,83 +1,133 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { motion } from "framer-motion";
-import { VitalRecord } from "@/hooks/useClinicalStream";
+import { Activity, TrendingUp, TrendingDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-interface VitalTrendProps {
-  data: VitalRecord[];
-  color?: string;
-  label: string;
-  unit: string;
+interface DataPoint {
+  valuenum: number;
+  charttime: string;
 }
 
-export function VitalTrend({ data, color = "#3b82f6", label, unit }: VitalTrendProps) {
-  if (data.length === 0) return (
-    <div className="h-32 flex items-center justify-center text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-      Waiting for Patient Pulse...
-    </div>
-  );
+interface VitalTrendProps {
+  label: string;
+  unit: string;
+  color: string;
+  data: DataPoint[];
+  className?: string;
+}
 
-  const lastValue = data[data.length - 1].valuenum;
-  const isCritical = data[data.length - 1].is_outlier;
+export function VitalTrend({ label, unit, color, data, className }: VitalTrendProps) {
+  const points = useMemo(() => {
+    if (data.length < 2) return "";
+    const width = 400;
+    const height = 100;
+    const max = Math.max(...data.map(d => d.valuenum)) * 1.1;
+    const min = Math.min(...data.map(d => d.valuenum)) * 0.9;
+    const range = max - min;
 
-  // Chart Mapping
-  const width = 300;
-  const height = 100;
-  const maxVal = Math.max(...data.map(d => d.valuenum)) * 1.2;
-  const minVal = Math.min(...data.map(d => d.valuenum)) * 0.8;
-  const range = maxVal - minVal || 1;
+    return data
+      .map((d, i) => {
+        const x = (i / (data.length - 1)) * width;
+        const y = height - ((d.valuenum - min) / (range || 1)) * height;
+        return `${x},${y}`;
+      })
+      .join(" ");
+  }, [data]);
 
-  const points = data.map((d, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((d.valuenum - minVal) / range) * height;
-    return `${x},${y}`;
-  }).join(" ");
+  const latestVal = data.length > 0 ? data[data.length - 1].valuenum : 0;
+  const prevVal = data.length > 1 ? data[data.length - 2].valuenum : 0;
+  const isUp = latestVal > prevVal;
 
   return (
-    <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm transition-all hover:shadow-md">
-      <div className="flex justify-between items-end mb-4">
-        <div>
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{label}</span>
-          <div className="flex items-baseline gap-1">
-            <span className={`text-3xl font-bold font-mono tracking-tighter ${isCritical ? 'text-rose-500 animate-pulse' : 'text-slate-900'}`}>
-              {lastValue.toFixed(0)}
-            </span>
-            <span className="text-sm font-medium text-slate-400">{unit}</span>
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className={cn(
+        "bg-white/60 backdrop-blur-md rounded-[2.5rem] p-8 border border-white/20 shadow-xl shadow-slate-200/20 group hover:shadow-2xl transition-all duration-500",
+        className
+      )}
+    >
+      <div className="flex justify-between items-start mb-8">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center group-hover:bg-blue-600 transition-colors duration-500">
+            <Activity className="text-slate-400 group-hover:text-white transition-colors duration-500" size={24} />
+          </div>
+          <div>
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">{label}</h3>
+            <div className="flex items-baseline gap-1">
+              <span className="text-4xl font-black text-slate-900 tracking-tighter leading-none">
+                {latestVal.toFixed(1)}
+              </span>
+              <span className="text-sm font-black text-slate-400 uppercase opacity-60">{unit}</span>
+            </div>
           </div>
         </div>
-        <div className={`px-2 py-1 rounded-full text-[10px] font-bold ${isCritical ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'}`}>
-          {isCritical ? "ALERT" : "STABLE"}
+        
+        <div className={cn(
+          "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest",
+          isUp ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
+        )}>
+          {isUp ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+          {Math.abs(latestVal - prevVal).toFixed(1)} Delta
         </div>
       </div>
 
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-24 overflow-visible">
-        {/* Shadow Path */}
-        <motion.polyline
-          fill="none"
-          stroke={isCritical ? "#f43f5e" : color}
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          points={points}
-          initial={false}
-          animate={{ points }}
-          transition={{ duration: 0.1, ease: "linear" }}
-          style={{ opacity: 0.15 }}
-        />
-        {/* Main Path */}
-        <motion.polyline
-          fill="none"
-          stroke={isCritical ? "#f43f5e" : color}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          points={points}
-          initial={false}
-          animate={{ points }}
-          transition={{ duration: 0.1, ease: "linear" }}
-        />
-      </svg>
-    </div>
+      <div className="relative h-24 w-full">
+        <svg
+          viewBox="0 0 400 100"
+          className="w-full h-full overflow-visible"
+          preserveAspectRatio="none"
+        >
+          {/* Waveform Shadow/Glow */}
+          <motion.polyline
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 1, ease: "easeOut" }}
+            fill="none"
+            stroke={color}
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={points}
+            style={{ opacity: 0.15, filter: 'blur(8px)' }}
+          />
+          
+          {/* Main Waveform */}
+          <motion.polyline
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 1, ease: "easeOut" }}
+            fill="none"
+            stroke={color}
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={points}
+            className="drop-shadow-[0_2px_10px_rgba(37,99,235,0.4)]"
+          />
+          
+          {/* Pulse Indicator */}
+          {data.length > 0 && (
+            <motion.circle
+              cx={(data.length - 1) / (data.length - 1) * 400 || 400}
+              cy={100 - ((latestVal - Math.min(...data.map(d => d.valuenum) || [0]) * 0.9) / ((Math.max(...data.map(d => d.valuenum) || [100]) * 1.1 - Math.min(...data.map(d => d.valuenum) || [0]) * 0.9) || 1)) * 100}
+              r="4"
+              fill={color}
+              className="animate-pulse pulse-glow"
+            />
+          )}
+        </svg>
+
+        {data.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] flex items-center gap-2">
+              <Activity className="animate-pulse" size={14} /> Waiting for Patient Pulse...
+            </span>
+          </div>
+        )}
+      </div>
+    </motion.div>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { AlertTriangle, ShieldCheck, Activity } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Activity } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 interface SepsisBannerProps {
@@ -12,52 +13,99 @@ interface SepsisBannerProps {
 
 export function SepsisBanner({ probability, status, lastCheck }: SepsisBannerProps) {
   const isCritical = status === "critical";
-  const isModerate = status === "moderate";
 
   return (
-    <div className={cn(
-      "w-full p-6 rounded-3xl border transition-all duration-500 flex items-center justify-between shadow-2xl shadow-slate-200/50",
-      isCritical ? "bg-rose-50 border-rose-200 text-rose-900" : 
-      isModerate ? "bg-amber-50 border-amber-200 text-amber-900" : 
-      "bg-emerald-50 border-emerald-200 text-emerald-900"
-    )}>
-      <div className="flex items-center gap-6">
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={status}
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 20 }}
+        className={cn(
+          "w-full rounded-[2.5rem] p-8 relative overflow-hidden group transition-all duration-500",
+          isCritical 
+            ? "bg-rose-600/5 backdrop-blur-xl border border-rose-200/50 shadow-2xl shadow-rose-500/10" 
+            : "bg-emerald-600/5 backdrop-blur-xl border border-emerald-200/50 shadow-2xl shadow-emerald-500/10"
+        )}
+      >
+        {/* Animated Background Pulse */}
         <div className={cn(
-          "w-16 h-16 rounded-2xl flex items-center justify-center transition-all",
-          isCritical ? "bg-rose-600 text-white animate-pulse" : 
-          isModerate ? "bg-amber-500 text-white" : 
-          "bg-emerald-600 text-white"
-        )}>
-          {isCritical ? <AlertTriangle size={32} /> : isModerate ? <Activity size={32} /> : <ShieldCheck size={32} />}
-        </div>
+          "absolute -right-20 -top-20 w-64 h-64 rounded-full opacity-10 blur-3xl",
+          isCritical ? "bg-rose-500 group-hover:opacity-20 animate-pulse" : "bg-emerald-500"
+        )} />
 
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-black uppercase tracking-[0.2em] opacity-60">Primary Risk Assessment</span>
-            <span className="w-1 h-1 rounded-full bg-current opacity-40"></span>
-            <span className="text-xs font-bold font-mono opacity-60 uppercase">Updated {lastCheck}</span>
+        <div className="flex flex-col md:flex-row items-center justify-between gap-8 relative z-10">
+          <div className="flex items-center gap-6">
+            <div className={cn(
+              "w-20 h-20 rounded-[2rem] flex items-center justify-center transition-transform group-hover:scale-110",
+              isCritical ? "bg-rose-600 text-white shadow-lg shadow-rose-200" : "bg-emerald-600 text-white shadow-lg shadow-emerald-200"
+            )}>
+              {isCritical ? <AlertTriangle size={40} strokeWidth={2.5} /> : <CheckCircle2 size={40} strokeWidth={2.5} />}
+            </div>
+            
+            <div className="space-y-1">
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+                  Primary Risk Assessment
+                </span>
+                <div className="flex gap-1 items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[8px] font-black uppercase tracking-widest">
+                  <Activity size={10} /> Live Ingestion
+                </div>
+              </div>
+              <h1 className={cn(
+                "text-4xl font-black tracking-tighter uppercase leading-none",
+                isCritical ? "text-rose-600" : "text-emerald-700"
+              )}>
+                {isCritical ? "Sepsis Risk Detected" : "Stable: Low Risk"}
+              </h1>
+              <p className="text-sm font-bold text-slate-500 max-w-md leading-relaxed">
+                {isCritical 
+                  ? "Clinical markers suggest immediate hemodynamic intervention. Elevated lactate and HR detected."
+                  : "All clinical markers within normal thresholds. Patient is currently showing signs of recovery."
+                }
+              </p>
+            </div>
           </div>
-          <h1 className="text-4xl font-black tracking-tighter uppercase">
-            {isCritical ? "CRITICAL: SEPSIS ONSET DETECTED" : 
-             isModerate ? "MODERATE RISK: MONITORING VITALS" : 
-             "LOW RISK: STABLE RECOVERY"}
-          </h1>
-          <p className="text-sm font-medium opacity-70 mt-1 max-w-xl">
-            {isCritical ? "System detects significant lactate spikes and dropping MAP. Recommend immediate clinical intervention and antibiotic administration." : 
-             isModerate ? "Minor deviation in heart rate and temperature detected. Continue automatic monitoring for the next 2 hours." : 
-             "All clinical markers within normal thresholds. Patient is currently stable and showing signs of recovery."}
-          </p>
-        </div>
-      </div>
 
-      <div className="text-right">
-        <div className="text-7xl font-black font-mono tracking-tighter leading-none mb-1">
-          {probability}%
+          <div className="flex items-center gap-8 bg-white/50 p-6 rounded-[2rem] border border-white/20 shadow-sm">
+            <div className="text-center space-y-1">
+              <div className="flex items-center justify-center gap-1.5 translate-y-1">
+                <span className={cn(
+                  "text-4xl font-black font-mono tracking-tighter transition-colors",
+                  isCritical ? "text-rose-600" : "text-emerald-600"
+                )}>
+                  {probability}%
+                </span>
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Confidence Score</div>
+              </div>
+              <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden mt-2">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${probability}%` }}
+                  className={cn(
+                    "h-full rounded-full transition-all duration-1000",
+                    isCritical ? "bg-rose-500" : "bg-emerald-500"
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="h-12 w-px bg-slate-200/60" />
+            
+            <div className="space-y-1">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">
+                Last Clinical Update
+              </div>
+              <div className="text-xl font-black text-slate-800 tracking-tighter">
+                {lastCheck}
+              </div>
+              <button className="flex items-center gap-1.5 text-[10px] font-black text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors">
+                <Info size={12} /> View Methodology
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="text-xs font-black uppercase tracking-widest opacity-60">
-          Confidence Score
-        </div>
-      </div>
-    </div>
+      </motion.div>
+    </AnimatePresence>
   );
 }
