@@ -12,7 +12,6 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
-from backend.firebase_service import FirebaseService
 from backend.models import (
     AssessmentResponse, 
     AssessmentSummary, 
@@ -34,13 +33,13 @@ app = FastAPI(
     description="Phase 2 integration layer for the ICU sepsis assessment agents.",
 )
 
-firebase_service = FirebaseService()
-app.state.firebase_service = firebase_service
-
 
 # Simple in-memory response cache (for repeated assessments)
 _RESPONSE_CACHE: Dict[str, tuple[AssessmentResponse, float]] = {}
 CACHE_TTL_SECONDS = 300  # 5 minutes
+
+# Simple in-memory assessment storage (replaces Firebase)
+_ASSESSMENT_STORE: Dict[str, AssessmentResponse] = {}
 
 
 def _generate_request_hash(request: PatientAssessmentRequest) -> str:
@@ -139,7 +138,7 @@ def _build_response(assessment_id: str, request: PatientAssessmentRequest, resul
         treatment_recommendations=list(result.get("treatment_recommendations", [])),
         final_report=str(result.get("final_report", "")),
         firebase_stored=False,
-        storage_backend=firebase_service.storage_backend,
+        storage_backend="memory",
     )
 
 
@@ -148,8 +147,8 @@ def health_check() -> HealthResponse:
     return HealthResponse(
         status="ok",
         service="icu-clinical-assistant",
-        firebase_enabled=firebase_service.enabled,
-        storage_backend=firebase_service.storage_backend,
+        firebase_enabled=False,
+        storage_backend="memory",
         timestamp=datetime.utcnow().isoformat(),
     )
 
@@ -173,10 +172,11 @@ def assess_patient(request: PatientAssessmentRequest) -> AssessmentResponse:
 
     assessment_id = str(uuid4())
     response = _build_response(assessment_id, request, result)
-    response.firebase_stored = True
-    response.storage_backend = firebase_service.storage_backend
-    stored = firebase_service.save_assessment(response.model_dump())
-    response.assessment_id = stored["assessment_id"]
+    response.firebase_stored = False
+    response.storage_backend = "memory"
+    
+    # Store in memory
+    _ASSESSMENT_STORE[assessment_id] = response
     
     # Cache the response
     _cache_response(request_hash, response)
@@ -186,16 +186,19 @@ def assess_patient(request: PatientAssessmentRequest) -> AssessmentResponse:
 
 @app.get("/assessments/{assessment_id}", response_model=AssessmentResponse)
 def get_assessment(assessment_id: str) -> AssessmentResponse:
-    assessment = firebase_service.get_assessment(assessment_id)
+    assessment = _ASSESSMENT_STORE.get(assessment_id)
     if assessment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assessment not found")
-    return AssessmentResponse.model_validate(assessment)
+    return assessment
 
 
 @app.get("/patients/{patient_id}/assessments", response_model=List[AssessmentSummary])
 def list_patient_assessments(patient_id: str) -> List[AssessmentSummary]:
-    assessments = firebase_service.list_patient_assessments(patient_id)
-    return [AssessmentSummary.model_validate(item) for item in assessments]
+    assessments = [
+        assessment for assessment in _ASSESSMENT_STORE.values()
+        if assessment.patient_id == patient_id
+    ]
+    return [AssessmentSummary.model_validate(assessment.model_dump()) for assessment in assessments]
 
 
 # MIMIC-III Supabase Integration Endpoints
@@ -322,11 +325,10 @@ def assess_mimic_patient(
         temp_request = TempRequest(patient_data)
         response = _build_response(assessment_id, temp_request, result)
         
-        # Store in Firebase
-        response.firebase_stored = True
-        response.storage_backend = firebase_service.storage_backend
-        stored = firebase_service.save_assessment(response.model_dump())
-        response.assessment_id = stored["assessment_id"]
+        # Store in memory
+        response.firebase_stored = False
+        response.storage_backend = "memory"
+        _ASSESSMENT_STORE[assessment_id] = response
         
         logger.info(f"Assessment complete for MIMIC patient {subject_id}: {response.risk_level}")
         

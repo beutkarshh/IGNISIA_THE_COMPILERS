@@ -12,9 +12,6 @@ ENV/
 # Environment variables
 .env
 
-# Firebase credentials
-firebase/config/firebase-service-account.json
-
 # IDE
 .vscode/
 .idea/
