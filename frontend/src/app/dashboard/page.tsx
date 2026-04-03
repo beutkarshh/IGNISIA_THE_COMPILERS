@@ -26,6 +26,8 @@ export default function DashboardPage() {
   const [mounted, setMounted] = useState(false);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [lastTelemetryAt, setLastTelemetryAt] = useState<Date | null>(null);
+  const [syncSecondsAgo, setSyncSecondsAgo] = useState<number | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -63,6 +65,28 @@ export default function DashboardPage() {
     [visiblePatients, effectiveSelectedId]
   );
 
+  // Track when telemetry was last received
+  const currentVitalsForEffect = vitals[effectiveSelectedId ?? 0];
+  const latestVitalTimestamp = currentVitalsForEffect?.length > 0
+    ? currentVitalsForEffect[currentVitalsForEffect.length - 1].charttime // watch actual data instead of array length
+    : null;
+
+  useEffect(() => {
+    if (latestVitalTimestamp) {
+      setLastTelemetryAt(new Date());
+    }
+  }, [latestVitalTimestamp]);
+
+  // Tick seconds-ago counter every second
+  useEffect(() => {
+    const ticker = setInterval(() => {
+      if (lastTelemetryAt) {
+        setSyncSecondsAgo(Math.floor((Date.now() - lastTelemetryAt.getTime()) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(ticker);
+  }, [lastTelemetryAt]);
+
   if (isLoadingDemographics || !mounted) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-white dark:bg-slate-950 gap-4 transition-colors duration-500">
@@ -84,59 +108,100 @@ export default function DashboardPage() {
   }
 
   const currentVitals = vitals[selectedPatient.subject_id] || [];
-  const hrVitals = currentVitals.filter(v => v.itemid === 211 || v.itemid === 220045);
-  const latestPulse = hrVitals[hrVitals.length - 1];
-  const isAlert = selectedPatient.is_alert || latestPulse?.is_outlier || (latestPulse?.valuenum > 130);
-  const sepsisProbability = isAlert ? 84 : (selectedPatient?.diagnosis?.toUpperCase().includes("SEPSIS") ? 42 : 12);
+
+  // ── Live vital derivations — all update as ingestor pushes every 10s ──
+  const latest = (itemids: number[]) => {
+    const matches = currentVitals.filter(v => itemids.includes(v.itemid));
+    return matches[matches.length - 1];
+  };
+
+  const hrRecord   = latest([211, 220045]);
+  const mapRecord  = latest([456, 52, 6702, 443, 220052, 220181, 225312]);
+  const spo2Record = latest([646, 220277]);
+  const rrRecord   = latest([615, 618, 220210, 224690]);
+  const tempRecord = latest([223761, 678]);   // °C or °F
+
+  const liveHR   = hrRecord?.valuenum   ?? selectedPatient.bpm;
+  const liveMAP  = mapRecord?.valuenum  ?? null;
+  const liveSPO2 = spo2Record?.valuenum ?? null;
+  const liveRR   = rrRecord?.valuenum   ?? null;
+  const liveTemp = tempRecord?.valuenum ?? null;
+
+  // Outlier from ANY live vital = alert
+  const anyOutlier = [hrRecord, mapRecord, spo2Record, rrRecord, tempRecord]
+    .some(r => r?.is_outlier);
+  const isAlert = selectedPatient.is_alert || anyOutlier
+    || (liveHR > 130) || (liveMAP !== null && liveMAP < 65)
+    || (liveSPO2 !== null && liveSPO2 < 92);
+
+  const sepsisProbability = isAlert ? 84
+    : selectedPatient?.diagnosis?.toUpperCase().includes("SEPSIS") ? 42 : 12;
   const status = isAlert ? "critical" : (sepsisProbability > 15 ? "moderate" : "stable");
   const bedUnit = `ICU-${String(selectedPatient.subject_id % 6 + 1).padStart(2, "0")}${String.fromCharCode(65 + (selectedPatient.subject_id % 4))}`;
 
+  // ── Dynamic protocol status — escalates based on live vital readings ──
+  const liveStatus = (
+    base: string,
+    escalateIf: boolean,
+    deescalateIf?: boolean
+  ): string => {
+    if (escalateIf) return "Critical";
+    if (deescalateIf) return "Stable";
+    return base;
+  };
+
   const getProtocols = (diagnosis: string = "") => {
     const d = diagnosis.toUpperCase();
+    const hrHigh  = liveHR  !== null && liveHR  > 120;
+    const mapLow  = liveMAP !== null && liveMAP < 65;
+    const spo2Low = liveSPO2 !== null && liveSPO2 < 92;
+    const rrHigh  = liveRR  !== null && liveRR  > 24;
+
     if (d.includes("SEPSIS") || d.includes("SEPTIC")) return [
-      { title: "Fluid Resuscitation", desc: "30 ml/kg crystalloid bolus in first 3 hrs. Reassess at 6 hrs.", status: "Critical" },
+      { title: "Fluid Resuscitation", desc: "30 ml/kg crystalloid bolus in first 3 hrs. Reassess at 6 hrs.", status: liveStatus("Critical", mapLow) },
       { title: "Broad-Spectrum Antibiotics", desc: "Vancomycin + Piperacillin/Tazobactam Q8H. Culture-guided de-escalation.", status: "Active" },
       { title: "Source Control", desc: "Surgical/radiology consult for drainage or debridement.", status: "Active" },
-      { title: "Vasopressors (PRN)", desc: "Norepinephrine target MAP ≥ 65 mmHg. Escalate as needed.", status: "Pending" },
+      { title: "Vasopressors (PRN)", desc: "Norepinephrine target MAP ≥ 65 mmHg. Escalate as needed.", status: liveStatus("Pending", mapLow) },
     ];
     if (d.includes("PNEUMONIA")) return [
-      { title: "Oxygen Therapy", desc: "Target SpO₂ 92–96% via nasal cannula. Consider HFNC if refractory.", status: "Active" },
+      { title: "Oxygen Therapy", desc: "Target SpO₂ 92–96% via nasal cannula. Consider HFNC if refractory.", status: liveStatus("Active", spo2Low) },
       { title: "Antibiotic Coverage", desc: "Azithromycin + Beta-lactam (community); Vanc + Cefepime (HAP).", status: "Active" },
       { title: "Sputum & Blood Cultures", desc: "Awaiting final sensitivity — repeat if no improvement at 48h.", status: "Pending" },
-      { title: "Early Mobilization", desc: "Breathing exercises Q4H. Incentive spirometry TID.", status: "Stable" },
+      { title: "Early Mobilization", desc: "Breathing exercises Q4H. Incentive spirometry TID.", status: liveStatus("Stable", false, !spo2Low) },
     ];
     if (d.includes("ARREST") || d.includes("CARDIAC") || d.includes("HEART FAILURE")) return [
-      { title: "Cardiac Monitoring", desc: "Continuous 12-lead ECG. Troponin Q6H × 3.", status: "Critical" },
-      { title: "Diuresis", desc: "IV Lasix 40 mg STAT. Target negative fluid balance 1–2 L/24h.", status: "Active" },
+      { title: "Cardiac Monitoring", desc: "Continuous 12-lead ECG. Troponin Q6H × 3.", status: liveStatus("Critical", hrHigh) },
+      { title: "Diuresis", desc: "IV Lasix 40 mg STAT. Target negative fluid balance 1–2 L/24h.", status: liveStatus("Active", mapLow) },
       { title: "Cardiology Consult", desc: "Urgent echocardiogram ordered. Hemodynamic optimization.", status: "Active" },
       { title: "Anticoagulation", desc: "Heparin infusion per weight-based protocol. PTT Q6H.", status: "Pending" },
     ];
     if (d.includes("STROKE") || d.includes("CVA") || d.includes("CEREBROVASCULAR")) return [
       { title: "Neurological Monitoring", desc: "NIHSS score Q2H. Pupil checks Q1H.", status: "Critical" },
       { title: "tPA / Thrombectomy", desc: "Within 4.5h window — neurology activating stroke protocol.", status: "Active" },
-      { title: "BP Management", desc: "Target < 185/110 mmHg pre-tPA. Labetalol/Nicardipine PRN.", status: "Active" },
+      { title: "BP Management", desc: "Target < 185/110 mmHg pre-tPA. Labetalol/Nicardipine PRN.", status: liveStatus("Active", mapLow) },
       { title: "Stroke Workup", desc: "CT Angiography & Diffusion MRI ordered. Embolic source screen.", status: "Pending" },
     ];
     if (d.includes("RENAL") || d.includes("KIDNEY") || d.includes("AKI") || d.includes("FAILURE")) return [
-      { title: "Fluid Balance", desc: "Strict I/O monitoring. Restrict IV fluids if fluid-overloaded.", status: "Active" },
+      { title: "Fluid Balance", desc: "Strict I/O monitoring. Restrict IV fluids if fluid-overloaded.", status: liveStatus("Active", mapLow) },
       { title: "Nephrotoxin Avoidance", desc: "Hold NSAIDs, aminoglycosides, IV contrast. Review all meds.", status: "Active" },
-      { title: "Dialysis Assessment", desc: "Nephrology consult placed. CRRT initiation criteria under review.", status: "Pending" },
-      { title: "Electrolyte Correction", desc: "Treat hyperkalemia per protocol. Kayexalate PRN.", status: "Stable" },
+      { title: "Dialysis Assessment", desc: "Nephrology consult placed. CRRT initiation criteria under review.", status: liveStatus("Pending", mapLow && rrHigh) },
+      { title: "Electrolyte Correction", desc: "Treat hyperkalemia per protocol. Kayexalate PRN.", status: liveStatus("Stable", hrHigh) },
     ];
     if (d.includes("COPD") || d.includes("RESPIRATORY") || d.includes("HYPOXIA")) return [
-      { title: "Bronchodilators", desc: "Albuterol + Ipratropium Q4H nebulizers. Titrate to response.", status: "Active" },
-      { title: "NIV / BiPAP", desc: "Non-invasive ventilation initiated. IPAP 14 / EPAP 5.", status: "Active" },
+      { title: "Bronchodilators", desc: "Albuterol + Ipratropium Q4H nebulizers. Titrate to response.", status: liveStatus("Active", rrHigh) },
+      { title: "NIV / BiPAP", desc: "Non-invasive ventilation initiated. IPAP 14 / EPAP 5.", status: liveStatus("Active", spo2Low) },
       { title: "Systemic Steroids", desc: "Methylprednisolone 125 mg IV Q8H × 3 days.", status: "Stable" },
-      { title: "Intubation Readiness", desc: "Respiratory threshold met — anesthesia on standby.", status: "Pending" },
+      { title: "Intubation Readiness", desc: "Respiratory threshold met — anesthesia on standby.", status: liveStatus("Pending", spo2Low && rrHigh) },
     ];
     return [
-      { title: "Vital Sign Monitoring", desc: "Q2H documentation. Continuous pulse oximetry.", status: "Active" },
+      { title: "Vital Sign Monitoring", desc: "Q2H documentation. Continuous pulse oximetry.", status: liveStatus("Active", isAlert) },
       { title: "DVT Prophylaxis", desc: "Enoxaparin 40 mg SQ daily. Sequential compression device active.", status: "Active" },
       { title: "Fall & Pressure Injury Prevention", desc: "Hourly repositioning. Foam mattress overlay applied.", status: "Active" },
       { title: "Nutrition Assessment", desc: "Dietitian consult placed. Enteral nutrition goal 25 kcal/kg/day.", status: "Pending" },
     ];
   };
   const protocols = getProtocols(selectedPatient?.diagnosis);
+
 
   return (
     <main className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden antialiased text-slate-900 dark:text-slate-100 transition-colors duration-500">
@@ -241,10 +306,90 @@ export default function DashboardPage() {
           <SepsisBanner probability={sepsisProbability} status={status} lastCheck={new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })} />
         </motion.section>
 
+        {/* ── Live Vitals Strip — all values from injected telemetry ── */}
+        <motion.div
+          key={`vitals-strip-${selectedPatient.subject_id}`}
+          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+          className="grid grid-cols-2 md:grid-cols-5 gap-4"
+        >
+          {[
+            {
+              label: "Heart Rate", unit: "BPM", icon: "💓",
+              value: liveHR, record: hrRecord,
+              normal: (v: number) => v >= 60 && v <= 100,
+              color: "blue",
+            },
+            {
+              label: "MAP", unit: "mmHg", icon: "🩸",
+              value: liveMAP, record: mapRecord,
+              normal: (v: number) => v >= 70 && v <= 100,
+              color: "cyan",
+            },
+            {
+              label: "SpO₂", unit: "%", icon: "🫁",
+              value: liveSPO2, record: spo2Record,
+              normal: (v: number) => v >= 95,
+              color: "emerald",
+            },
+            {
+              label: "Resp Rate", unit: "/min", icon: "🌬️",
+              value: liveRR, record: rrRecord,
+              normal: (v: number) => v >= 12 && v <= 20,
+              color: "violet",
+            },
+            {
+              label: "Temperature", unit: tempRecord?.valueuom === "degF" ? "°F" : "°C", icon: "🌡️",
+              value: liveTemp, record: tempRecord,
+              normal: (v: number) => tempRecord?.valueuom === "degF" ? (v >= 97 && v <= 99.5) : (v >= 36.1 && v <= 37.2),
+              color: "rose",
+            },
+          ].map((vital, i) => {
+            const isCritical = vital.record?.is_outlier || (vital.value !== null && !vital.normal(vital.value!));
+            const hasData = vital.value !== null && vital.value !== undefined;
+            return (
+              <motion.div
+                key={vital.label}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.1 + i * 0.05 }}
+                className={cn(
+                  "relative p-5 rounded-3xl border transition-all duration-700",
+                  isCritical
+                    ? "bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800 shadow-rose-500/10 shadow-lg"
+                    : "bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 shadow-sm"
+                )}
+              >
+                {isCritical && (
+                  <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                )}
+                <div className="text-lg mb-1">{vital.icon}</div>
+                <div className={cn(
+                  "text-2xl font-black tracking-tighter leading-none",
+                  isCritical ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-slate-100"
+                )}>
+                  {hasData ? vital.value!.toFixed(1) : "—"}
+                  <span className="text-xs font-black text-slate-400 ml-1">{vital.unit}</span>
+                </div>
+                <div className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em] mt-1.5">
+                  {vital.label}
+                </div>
+                {hasData && (
+                  <div className={cn(
+                    "text-[8px] font-black uppercase mt-1",
+                    isCritical ? "text-rose-500" : "text-emerald-500"
+                  )}>
+                    {isCritical ? "⚠ OUT OF RANGE" : "✓ NORMAL"}
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
+        </motion.div>
+
         {/* Vitals Grid */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-          <VitalTrend label="Heart Rate Telemetry" unit="BPM" color="#2563EB" data={currentVitals.filter(v => [211, 220045].includes(v.itemid))} className="shadow-xl shadow-blue-500/5" />
-          <VitalTrend label="MAP Trends" unit="mmHg" color="#0891B2" data={currentVitals.filter(v => [456, 52, 6702, 443, 220052, 220181, 225312].includes(v.itemid))} />
+          <VitalTrend label="Heart Rate Telemetry" unit="BPM" color="#2563EB" data={currentVitals.filter(v => [211, 220045].includes(v.itemid))} yMin={30} yMax={200} className="shadow-xl shadow-blue-500/5" />
+          <VitalTrend label="MAP Trends" unit="mmHg" color="#0891B2" data={currentVitals.filter(v => [456, 52, 6702, 443, 220052, 220181, 225312].includes(v.itemid))} yMin={40} yMax={140} />
         </div>
 
         {/* Clinical Profile + Protocols */}
@@ -282,8 +427,24 @@ export default function DashboardPage() {
                   <ClipboardList size={20} className="text-blue-600" />
                   <h3 className="text-sm font-black uppercase tracking-tight">Active Clinical Protocols</h3>
                 </div>
-                <div className={cn("px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest", isAlert ? "bg-rose-50 dark:bg-rose-900/50 text-rose-600" : "bg-blue-50 dark:bg-blue-900/50 text-blue-600")}>
-                  {isAlert ? "⚠ Urgent" : "Live Sync"}
+                <div className={cn(
+                  "flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-500",
+                  isAlert
+                    ? "bg-rose-50 dark:bg-rose-900/50 text-rose-600"
+                    : "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
+                )}>
+                  <span className={cn(
+                    "w-1.5 h-1.5 rounded-full",
+                    isAlert ? "bg-rose-500 animate-ping" : "bg-emerald-500 animate-pulse"
+                  )} />
+                  {isAlert
+                    ? "⚠ Urgent"
+                    : syncSecondsAgo === null
+                      ? "Connecting..."
+                      : syncSecondsAgo < 15
+                        ? `Live · ${syncSecondsAgo}s ago`
+                        : `Last sync ${syncSecondsAgo}s ago`
+                  }
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
