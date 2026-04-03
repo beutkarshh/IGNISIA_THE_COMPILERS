@@ -7,9 +7,9 @@ import { useClinicalStream } from "@/hooks/useClinicalStream";
 import { useClinicalData } from "@/hooks/useClinicalData";
 import {
   Activity, Thermometer, Wind, ClipboardList, Database, Zap,
-  SunMoon, Bed, Sun, LogOut, BarChart2
+  SunMoon, Bed, Sun, LogOut, BarChart2, Brain, Loader2, AlertTriangle
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -17,6 +17,9 @@ import {
   getCurrentUser, logout, getNotifications, canDoctorSeePatient,
   SPECIALTY_LABELS, type AppUser
 } from "@/lib/auth";
+import {
+  assessMIMICPatient, type AssessmentResponse, formatErrorMessage, isNetworkError
+} from "@/lib/api";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -28,6 +31,12 @@ export default function DashboardPage() {
   const [pendingCount, setPendingCount] = useState(0);
   const [lastTelemetryAt, setLastTelemetryAt] = useState<Date | null>(null);
   const [syncSecondsAgo, setSyncSecondsAgo] = useState<number | null>(null);
+  
+  // Assessment state
+  const [assessmentLoading, setAssessmentLoading] = useState(false);
+  const [currentAssessment, setCurrentAssessment] = useState<AssessmentResponse | null>(null);
+  const [assessmentError, setAssessmentError] = useState<string | null>(null);
+  const [assessmentHistory, setAssessmentHistory] = useState<Record<number, AssessmentResponse>>({});
 
   useEffect(() => {
     setMounted(true);
@@ -52,18 +61,88 @@ export default function DashboardPage() {
   const toggleTheme = () => setTheme(prev => prev === "dark" ? "light" : "dark");
   const handleLogout = () => { logout(); router.push("/login"); };
 
+  // All hooks must be called before any conditional returns - fix order
   const visiblePatients = useMemo(() => {
     if (!currentUser) return patients;
     if (currentUser.role === "admin") return patients;
-    return patients.filter(p => canDoctorSeePatient(currentUser.specialty, p.diagnosis || ""));
+    return patients.filter(p => canDoctorSeePatient(currentUser.specialty || "general", p.diagnosis || ""));
   }, [patients, currentUser]);
 
+  // Get vitals data for all patients - this must be called before any conditional returns
   const { vitals } = useClinicalStream(patients.map(p => p.subject_id));
   const effectiveSelectedId = selectedId ?? visiblePatients[0]?.subject_id ?? null;
+
+  // Load cached assessment when patient changes
+  useEffect(() => {
+    if (effectiveSelectedId && assessmentHistory[effectiveSelectedId]) {
+      setCurrentAssessment(assessmentHistory[effectiveSelectedId]);
+    } else {
+      setCurrentAssessment(null);
+    }
+    setAssessmentError(null);
+  }, [effectiveSelectedId, assessmentHistory]);
+
   const selectedPatient = useMemo(
     () => visiblePatients.find(p => p.subject_id === effectiveSelectedId),
     [visiblePatients, effectiveSelectedId]
   );
+
+  // Get current vitals for selected patient
+  const currentVitals = selectedPatient ? (vitals[selectedPatient.subject_id] || []) : [];
+
+  // Debug logging to see if data is reaching the component
+  useEffect(() => {
+    if (selectedPatient && currentVitals.length > 0) {
+      console.log(`[Dashboard Debug] Patient ${selectedPatient.subject_id} has ${currentVitals.length} vital readings`);
+      
+      // Log all unique itemids we have
+      const uniqueItemids = [...new Set(currentVitals.map(v => v.itemid))];
+      console.log(`[Dashboard Debug] Available itemids:`, uniqueItemids);
+      
+      // Check heart rate data
+      const hrData = currentVitals.filter(v => [211, 220045].includes(v.itemid));
+      const mapData = currentVitals.filter(v => [456, 52, 6702, 443, 220052, 220181, 225312].includes(v.itemid));
+      
+      console.log(`[Dashboard Debug] HR data: ${hrData.length} points`, hrData.slice(0, 2));
+      console.log(`[Dashboard Debug] MAP data: ${mapData.length} points`, mapData.slice(0, 2));
+      
+      // Log a few sample records to check structure
+      console.log(`[Dashboard Debug] Sample vitals structure:`, currentVitals.slice(0, 2));
+    } else if (selectedPatient) {
+      console.log(`[Dashboard Debug] No vital data for patient ${selectedPatient.subject_id}`);
+    }
+  }, [currentVitals, selectedPatient]);
+
+  // Assessment functions
+  const runAssessment = async () => {
+    if (!selectedPatient) return;
+    
+    setAssessmentLoading(true);
+    setAssessmentError(null);
+    
+    try {
+      // Pass subject_id as string - the API client will handle the URL properly
+      const response = await assessMIMICPatient(selectedPatient.subject_id.toString());
+      setCurrentAssessment(response);
+      setAssessmentHistory(prev => ({
+        ...prev,
+        [selectedPatient.subject_id]: response
+      }));
+    } catch (error) {
+      const errorMessage = formatErrorMessage(error);
+      setAssessmentError(errorMessage);
+      
+      // Log error for debugging
+      console.error('Assessment failed:', error);
+    } finally {
+      setAssessmentLoading(false);
+    }
+  };
+
+  const clearAssessment = () => {
+    setCurrentAssessment(null);
+    setAssessmentError(null);
+  };
 
   // Track when telemetry was last received
   const currentVitalsForEffect = vitals[effectiveSelectedId ?? 0];
@@ -107,8 +186,6 @@ export default function DashboardPage() {
     );
   }
 
-  const currentVitals = vitals[selectedPatient.subject_id] || [];
-
   // ── Live vital derivations — all update as ingestor pushes every 10s ──
   const latest = (itemids: number[]) => {
     const matches = currentVitals.filter(v => itemids.includes(v.itemid));
@@ -134,9 +211,15 @@ export default function DashboardPage() {
     || (liveHR > 130) || (liveMAP !== null && liveMAP < 65)
     || (liveSPO2 !== null && liveSPO2 < 92);
 
-  const sepsisProbability = isAlert ? 84
+  const sepsisProbability = currentAssessment ? currentAssessment.risk_score 
+    : isAlert ? 84
     : selectedPatient?.diagnosis?.toUpperCase().includes("SEPSIS") ? 42 : 12;
-  const status = isAlert ? "critical" : (sepsisProbability > 15 ? "moderate" : "stable");
+    
+  const status = currentAssessment 
+    ? (currentAssessment.risk_level.toLowerCase() as "stable" | "moderate" | "critical")
+    : isAlert ? "critical" 
+    : (sepsisProbability > 15 ? "moderate" : "stable");
+    
   const bedUnit = `ICU-${String(selectedPatient.subject_id % 6 + 1).padStart(2, "0")}${String.fromCharCode(65 + (selectedPatient.subject_id % 4))}`;
 
   // ── Dynamic protocol status — escalates based on live vital readings ──
@@ -281,19 +364,55 @@ export default function DashboardPage() {
               </Link>
             )}
 
-            {/* 2. Live Feed */}
+            {/* 2. AI Assessment */}
+            <button 
+              onClick={assessmentLoading ? undefined : runAssessment}
+              disabled={assessmentLoading || !selectedPatient}
+              title={assessmentLoading ? "Running AI Assessment..." : "Run AI Assessment"}
+              className={cn(
+                "relative flex items-center gap-1.5 px-3 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-sm transition-all duration-200",
+                assessmentLoading 
+                  ? "bg-blue-600/10 border-blue-600/20 text-blue-600 cursor-not-allowed" 
+                  : currentAssessment
+                  ? "bg-emerald-600/10 border-emerald-600/20 text-emerald-600 hover:bg-emerald-600/20"
+                  : "bg-blue-600 border-blue-600 text-white hover:bg-blue-700",
+                "border"
+              )}
+            >
+              {assessmentLoading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Analyzing...
+                </>
+              ) : currentAssessment ? (
+                <>
+                  <Brain size={14} />
+                  Risk: {currentAssessment.risk_score}
+                </>
+              ) : (
+                <>
+                  <Brain size={14} />
+                  AI Assess
+                </>
+              )}
+              {currentAssessment && !assessmentLoading && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-emerald-500 text-white text-[8px] font-black rounded-full flex items-center justify-center">✓</span>
+              )}
+            </button>
+
+            {/* 3. Live Feed */}
             <div className="flex items-center gap-1.5 px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Live Feed</span>
             </div>
 
-            {/* 3. Theme toggle */}
+            {/* 4. Theme toggle */}
             <button onClick={toggleTheme} title={theme === "dark" ? "Light Mode" : "Dark Mode"}
               className="w-10 h-10 flex items-center justify-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
               {theme === "dark" ? <Sun size={15} className="text-amber-500" /> : <SunMoon size={15} className="text-blue-600" />}
             </button>
 
-            {/* 4. Logout */}
+            {/* 5. Logout */}
             <button onClick={handleLogout} title="Logout"
               className="w-10 h-10 flex items-center justify-center bg-slate-900 dark:bg-white rounded-2xl shadow-sm text-white dark:text-slate-900 hover:opacity-80 transition-opacity">
               <LogOut size={15} />
@@ -305,6 +424,114 @@ export default function DashboardPage() {
         <motion.section key={`banner-${selectedPatient.subject_id}`} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }} className="w-full">
           <SepsisBanner probability={sepsisProbability} status={status} lastCheck={new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })} />
         </motion.section>
+
+        {/* Assessment Results Panel */}
+        <AnimatePresence mode="wait">
+          {assessmentError && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="w-full"
+            >
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-3xl p-6 flex items-center gap-4">
+                <AlertTriangle className="text-red-600 dark:text-red-400" size={24} />
+                <div>
+                  <h3 className="font-bold text-red-900 dark:text-red-100 mb-1">Assessment Failed</h3>
+                  <p className="text-sm text-red-700 dark:text-red-300">{assessmentError}</p>
+                  {isNetworkError(new Error(assessmentError)) && (
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+                      Make sure the backend server is running on http://localhost:8000
+                    </p>
+                  )}
+                  <button
+                    onClick={clearAssessment}
+                    className="text-xs font-bold text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 mt-2 underline"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+          
+          {currentAssessment && !assessmentError && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="w-full"
+            >
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800/50 rounded-3xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <Brain className="text-blue-600 dark:text-blue-400" size={24} />
+                    <div>
+                      <h3 className="font-black text-blue-900 dark:text-blue-100 uppercase tracking-wider">AI Assessment Complete</h3>
+                      <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">
+                        Generated {new Date(currentAssessment.generated_at).toLocaleTimeString()}
+                        {currentAssessment.processing_time_ms && (
+                          <span className="ml-2">• {(currentAssessment.processing_time_ms / 1000).toFixed(1)}s processing time</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-black text-blue-600 dark:text-blue-400">
+                      {currentAssessment.risk_score}%
+                    </div>
+                    <div className="text-xs font-bold text-blue-800 dark:text-blue-200 uppercase tracking-wider">
+                      {currentAssessment.risk_level}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Diagnostic criteria met */}
+                {currentAssessment.diagnostic_criteria_met.length > 0 && (
+                  <div className="mb-4">
+                    <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-2">Criteria Met</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {currentAssessment.diagnostic_criteria_met.map((criteria, idx) => (
+                        <span
+                          key={idx}
+                          className="px-3 py-1 bg-blue-100 dark:bg-blue-800/30 text-blue-800 dark:text-blue-200 text-xs font-bold rounded-full"
+                        >
+                          {criteria}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Treatment recommendations */}
+                {currentAssessment.treatment_recommendations.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-2">Recommendations</h4>
+                    <div className="space-y-2">
+                      {currentAssessment.treatment_recommendations.slice(0, 3).map((rec, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300"
+                        >
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          <span>{rec.action || rec.description || JSON.stringify(rec)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Dismiss button */}
+                <button
+                  onClick={clearAssessment}
+                  className="mt-4 text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 underline"
+                >
+                  Dismiss Assessment
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ── Live Vitals Strip — all values from injected telemetry ── */}
         <motion.div

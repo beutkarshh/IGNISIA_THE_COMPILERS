@@ -29,6 +29,11 @@ export function VitalTrend({
   className, yMin, yMax,
 }: VitalTrendProps) {
 
+  // Debug logging
+  React.useEffect(() => {
+    console.log(`[VitalTrend] ${label} received ${data.length} data points:`, data.slice(0, 3));
+  }, [data, label]);
+
   // Scrolling window — always show last DISPLAY_POINTS values
   const window = useMemo(
     () => data.slice(-DISPLAY_POINTS),
@@ -40,7 +45,19 @@ export function VitalTrend({
       return { polylinePoints: "", areaPath: "", yLabels: [], gridYs: [], latestY: H / 2, dotX: W };
     }
 
-    const vals = window.map(d => d.valuenum);
+    // Filter out invalid values
+    const validData = window.filter(d => 
+      d.valuenum !== null && 
+      d.valuenum !== undefined && 
+      !isNaN(d.valuenum) && 
+      isFinite(d.valuenum)
+    );
+
+    if (validData.length < 2) {
+      return { polylinePoints: "", areaPath: "", yLabels: [], gridYs: [], latestY: H / 2, dotX: W };
+    }
+
+    const vals = validData.map(d => d.valuenum);
     const rawMin = Math.min(...vals);
     const rawMax = Math.max(...vals);
     const padding = (rawMax - rawMin) * 0.25 || 5;
@@ -51,16 +68,16 @@ export function VitalTrend({
     const range = hi - lo || 1;
 
     // X: spread evenly across full width (scrolling feel — newest = rightmost)
-    const toX = (i: number) => (i / (window.length - 1)) * W;
+    const toX = (i: number) => (i / (validData.length - 1)) * W;
     const toY = (v: number) => H - ((v - lo) / range) * (H - 4) - 2;
 
     // Smooth polyline points
-    const pts = window.map((d, i) => `${toX(i)},${toY(d.valuenum)}`).join(" ");
+    const pts = validData.map((d, i) => `${toX(i)},${toY(d.valuenum)}`).join(" ");
 
     // Filled area path
     const firstX = toX(0);
-    const lastX  = toX(window.length - 1);
-    const area = `M${firstX},${H} ` + window.map((d, i) => `L${toX(i)},${toY(d.valuenum)}`).join(" ") + ` L${lastX},${H} Z`;
+    const lastX  = toX(validData.length - 1);
+    const area = `M${firstX},${H} ` + validData.map((d, i) => `L${toX(i)},${toY(d.valuenum)}`).join(" ") + ` L${lastX},${H} Z`;
 
     // Y-axis: 3 labels (top, mid, bottom)
     const mid = (lo + hi) / 2;
@@ -74,7 +91,7 @@ export function VitalTrend({
     const grids = [4, H / 2, H - 4];
 
     // Dot for latest point
-    const last = window[window.length - 1];
+    const last = validData[validData.length - 1];
     const latestYPos = toY(last.valuenum);
 
     return {
@@ -83,14 +100,18 @@ export function VitalTrend({
       yLabels: labels,
       gridYs: grids,
       latestY: latestYPos,
-      dotX: toX(window.length - 1),
+      dotX: toX(validData.length - 1),
     };
   }, [window, yMin, yMax]);
 
-  const latestVal = data.length > 0 ? data[data.length - 1].valuenum : 0;
-  const prevVal   = data.length > 1 ? data[data.length - 2].valuenum : 0;
-  const delta     = latestVal - prevVal;
-  const isUp      = delta >= 0;
+  const latestVal = data.length > 0 && data[data.length - 1]?.valuenum != null && !isNaN(data[data.length - 1].valuenum) 
+    ? data[data.length - 1].valuenum 
+    : 0;
+  const prevVal = data.length > 1 && data[data.length - 2]?.valuenum != null && !isNaN(data[data.length - 2].valuenum)
+    ? data[data.length - 2].valuenum 
+    : 0;
+  const delta = latestVal - prevVal;
+  const isUp = delta >= 0;
 
   // Gradient id (unique per color to avoid SVG conflicts)
   const gradId = `vt-grad-${color.replace(/[^a-zA-Z0-9]/g, "")}`;
@@ -208,16 +229,18 @@ export function VitalTrend({
                 style={{ filter: `drop-shadow(0 2px 8px ${color}60)` }}
               />
 
-              {/* Live dot at latest value */}
-              <motion.circle
-                cx={dotX}
-                cy={latestY}
-                r={5}
-                fill={color}
-                animate={{ r: [4, 6, 4], opacity: [1, 0.6, 1] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                style={{ filter: `drop-shadow(0 0 6px ${color})` }}
-              />
+              {/* Live dot at latest value - only render if we have valid coordinates */}
+              {!isNaN(dotX) && !isNaN(latestY) && isFinite(dotX) && isFinite(latestY) && (
+                <motion.circle
+                  cx={dotX}
+                  cy={latestY}
+                  r={5}
+                  fill={color}
+                  animate={{ r: [4, 6, 4], opacity: [1, 0.6, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                  style={{ filter: `drop-shadow(0 0 6px ${color})` }}
+                />
+              )}
             </svg>
           )}
         </div>

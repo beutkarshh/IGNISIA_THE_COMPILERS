@@ -344,6 +344,55 @@ def assess_mimic_patient(
         )
 
 
+@app.get("/mimic/telemetry")
+def get_live_telemetry(limit: int = 50):
+    """
+    Get recent live telemetry data for debugging the real-time stream.
+    
+    Args:
+        limit: Maximum number of recent records to return
+        
+    Returns:
+        Recent telemetry data from live_telemetry table
+    """
+    import os
+    from supabase import create_client, Client
+    
+    try:
+        # Create Supabase client
+        supabase_url = os.environ.get("SUPABASE_URL")
+        supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if not supabase_url or not supabase_key:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Supabase configuration missing"
+            )
+        
+        supabase: Client = create_client(supabase_url, supabase_key)
+        
+        # Query recent telemetry data
+        response = supabase.table("live_telemetry").select(
+            "subject_id, itemid, valuenum, valueuom, charttime, is_outlier, created_at"
+        ).order("created_at", desc=True).limit(limit).execute()
+        
+        data = response.data or []
+        
+        return {
+            "status": "success",
+            "count": len(data),
+            "data": data,
+            "latest_timestamp": data[0]["created_at"] if data else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching telemetry data: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching telemetry: {str(e)}"
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
 
