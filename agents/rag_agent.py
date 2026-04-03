@@ -119,7 +119,7 @@ def rag_agent(state: PatientState) -> PatientState:
     query = build_query(state)
     
     # TODO: Implement ChromaDB retrieval
-    # For now, use rule-based matching
+    # For now, use rule-based matching with enhanced citations
     retrieved_guidelines = []
     diagnostic_criteria_met = []
     
@@ -128,10 +128,14 @@ def rag_agent(state: PatientState) -> PatientState:
         diagnostic_criteria_met.append("SIRS")
         retrieved_guidelines.append({
             "guideline_name": "SIRS Criteria",
-            "section": "Diagnostic",
+            "guideline_title": "Systemic Inflammatory Response Syndrome - Consensus Definition",
+            "guideline_year": 1992,
+            "section": "Diagnostic Criteria",
             "content": "Systemic Inflammatory Response Syndrome: ≥2 of (Temp >38°C or <36°C, HR >90, RR >20, WBC >12K or <4K)",
             "relevance_score": 0.95,
-            "citation": "[SIRS Criteria]"
+            "citation": "Bone RC, et al. Definitions for sepsis and organ failure. Chest. 1992;101(6):1644-1655.",
+            "pubmed_id": "1303622",
+            "doi": "10.1378/chest.101.6.1644"
         })
     
     # Check qSOFA
@@ -140,10 +144,14 @@ def rag_agent(state: PatientState) -> PatientState:
         diagnostic_criteria_met.append("qSOFA")
         retrieved_guidelines.append({
             "guideline_name": "qSOFA",
-            "section": "Sepsis-3",
+            "guideline_title": "The Third International Consensus Definitions for Sepsis and Septic Shock (Sepsis-3)",
+            "guideline_year": 2016,
+            "section": "qSOFA Score",
             "content": f"Quick SOFA score = {qsofa_score}. Score ≥2 indicates high risk of poor outcome with suspected infection.",
             "relevance_score": 0.92,
-            "citation": "[Sepsis-3, qSOFA]"
+            "citation": "Singer M, et al. The Third International Consensus Definitions for Sepsis and Septic Shock (Sepsis-3). JAMA. 2016;315(8):801-810.",
+            "pubmed_id": "26903338",
+            "doi": "10.1001/jama.2016.0287"
         })
     
     # Check elevated lactate
@@ -152,11 +160,15 @@ def rag_agent(state: PatientState) -> PatientState:
         if current_lactate > 2.0:
             diagnostic_criteria_met.append("Elevated_Lactate")
             retrieved_guidelines.append({
-                "guideline_name": "Sepsis-3",
-                "section": "Lactate",
+                "guideline_name": "Sepsis-3 Lactate",
+                "guideline_title": "Surviving Sepsis Campaign: International Guidelines for Management of Sepsis and Septic Shock",
+                "guideline_year": 2021,
+                "section": "Lactate Measurement",
                 "content": f"Lactate {current_lactate} mmol/L. Lactate >2.0 mmol/L suggests tissue hypoperfusion and septic shock risk.",
                 "relevance_score": 0.90,
-                "citation": "[Sepsis-3, Lactate Criteria]"
+                "citation": "Evans L, et al. Surviving Sepsis Campaign: International Guidelines for Management of Sepsis and Septic Shock 2021. Crit Care Med. 2021;49(11):e1063-e1143.",
+                "pubmed_id": "34605781",
+                "doi": "10.1097/CCM.0000000000005337"
             })
     
     state['retrieved_guidelines'] = retrieved_guidelines

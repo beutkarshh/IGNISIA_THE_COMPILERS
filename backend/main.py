@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import time
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 
 from backend.firebase_service import FirebaseService
 from backend.models import AssessmentResponse, AssessmentSummary, HealthResponse, PatientAssessmentRequest
 from backend.workflow import run_patient_assessment
+from utils.logger import setup_logger
+
+logger = setup_logger('api', level='INFO')
 
 
 app = FastAPI(
@@ -21,6 +28,85 @@ app = FastAPI(
 
 firebase_service = FirebaseService()
 app.state.firebase_service = firebase_service
+
+
+# Simple in-memory response cache (for repeated assessments)
+_RESPONSE_CACHE: Dict[str, tuple[AssessmentResponse, float]] = {}
+CACHE_TTL_SECONDS = 300  # 5 minutes
+
+
+def _generate_request_hash(request: PatientAssessmentRequest) -> str:
+    """Generate hash for caching identical requests."""
+    request_dict = request.model_dump(exclude={'current_timepoint_index'})
+    # Include timepoint index in hash
+    request_dict['timepoint'] = request.current_timepoint_index or 0
+    content = json.dumps(request_dict, sort_keys=True)
+    return hashlib.md5(content.encode()).hexdigest()
+
+
+def _get_cached_response(request_hash: str) -> Optional[AssessmentResponse]:
+    """Get cached response if still valid."""
+    if request_hash in _RESPONSE_CACHE:
+        cached_response, timestamp = _RESPONSE_CACHE[request_hash]
+        age = time.time() - timestamp
+        
+        if age < CACHE_TTL_SECONDS:
+            logger.info(f"Cache hit for request {request_hash[:8]} (age: {age:.1f}s)")
+            return cached_response
+        else:
+            # Remove expired entry
+            del _RESPONSE_CACHE[request_hash]
+    
+    return None
+
+
+def _cache_response(request_hash: str, response: AssessmentResponse):
+    """Cache response with timestamp."""
+    _RESPONSE_CACHE[request_hash] = (response, time.time())
+    
+    # Limit cache size (FIFO eviction)
+    if len(_RESPONSE_CACHE) > 100:
+        oldest_key = next(iter(_RESPONSE_CACHE))
+        del _RESPONSE_CACHE[oldest_key]
+
+
+# API request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all API requests with timing."""
+    start_time = time.time()
+    
+    response = await call_next(request)
+    
+    duration_ms = int((time.time() - start_time) * 1000)
+    
+    logger.info(
+        f"{request.method} {request.url.path}",
+        extra={
+            'method': request.method,
+            'path': request.url.path,
+            'status_code': response.status_code,
+            'duration_ms': duration_ms,
+            'event': 'api_request'
+        }
+    )
+    
+    return response
+
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Handle all unhandled exceptions."""
+    logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error occurred during assessment",
+            "error_type": type(exc).__name__,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    )
 
 
 def _build_response(assessment_id: str, request: PatientAssessmentRequest, result: Dict[str, Any]) -> AssessmentResponse:
@@ -62,6 +148,16 @@ def health_check() -> HealthResponse:
 
 @app.post("/assess-patient", response_model=AssessmentResponse, status_code=status.HTTP_201_CREATED)
 def assess_patient(request: PatientAssessmentRequest) -> AssessmentResponse:
+    # Check cache first
+    request_hash = _generate_request_hash(request)
+    cached = _get_cached_response(request_hash)
+    
+    if cached:
+        # Return cached response with note
+        logger.info(f"Returning cached assessment for patient {request.patient_id}")
+        return cached
+    
+    # Run fresh assessment
     result = run_patient_assessment(
         request.model_dump(exclude_none=True),
         current_timepoint_index=request.current_timepoint_index,
@@ -73,6 +169,10 @@ def assess_patient(request: PatientAssessmentRequest) -> AssessmentResponse:
     response.storage_backend = firebase_service.storage_backend
     stored = firebase_service.save_assessment(response.model_dump())
     response.assessment_id = stored["assessment_id"]
+    
+    # Cache the response
+    _cache_response(request_hash, response)
+    
     return response
 
 

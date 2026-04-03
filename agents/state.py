@@ -54,12 +54,16 @@ class LabTrend(TypedDict):
 
 
 class GuidelineMatch(TypedDict):
-    """Matched clinical guideline from RAG."""
+    """Matched clinical guideline from RAG with full citation metadata."""
     guideline_name: str  # e.g., "Sepsis-3"
+    guideline_title: str  # Full title: "The Third International Consensus Definitions for Sepsis"
+    guideline_year: int  # Publication year (e.g., 2016)
     section: str  # e.g., "2.1"
     content: str  # The actual guideline text
     relevance_score: float  # Similarity score (0-1)
-    citation: str  # Formatted citation
+    citation: str  # Formatted citation (APA style)
+    pubmed_id: Optional[str]  # PubMed ID if available (e.g., "26903338")
+    doi: Optional[str]  # DOI if available (e.g., "10.1001/jama.2016.0287")
 
 
 class OutlierAlert(TypedDict):
