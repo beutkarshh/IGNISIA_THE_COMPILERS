@@ -9,7 +9,7 @@
 
 .dark {
   --color-background: #020617;
-  --color-foreground: #E2E8F0;
+  --color-foreground: #F8FAFC;
 }
 
 @theme {
@@ -45,11 +45,30 @@
     box-shadow: 0 0 15px rgba(37, 99, 235, 0.4);
     animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
+
+  .animate-blink-red {
+    animation: blink-red 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
 }
 
 @keyframes pulse-ring {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: .7; transform: scale(1.05); }
+}
+
+@keyframes blink-red {
+  0%, 100% { 
+    background-color: rgba(190, 18, 60, 0.60);
+    color: #fff0f3;
+    border-color: #be123c;
+    box-shadow: 0 0 0 2px rgba(190, 18, 60, 0.35);
+  }
+  50% { 
+    background-color: rgba(190, 18, 60, 0.90);
+    color: #ffffff;
+    border-color: #9f1239;
+    box-shadow: 0 0 0 4px rgba(190, 18, 60, 0.5), 0 0 16px rgba(190, 18, 60, 0.4);
+  }
 }
 
 /* Cleaner scrollbar */
