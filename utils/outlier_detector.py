@@ -9,9 +9,33 @@ Uses two methods:
 2. IQR (Interquartile Range): Values outside 1.5*IQR from Q1/Q3
 """
 
-import numpy as np
-from scipy import stats
+from statistics import mean, stdev
 from typing import List, Dict, Optional
+
+try:
+    import numpy as np
+except Exception:  # pragma: no cover - optional dependency path
+    np = None
+
+try:
+    from scipy import stats  # noqa: F401
+except Exception:  # pragma: no cover - optional dependency path
+    stats = None
+
+
+def _percentile(values: List[float], percentile: float) -> float:
+    if not values:
+        return 0.0
+
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return float(ordered[0])
+
+    rank = (len(ordered) - 1) * (percentile / 100.0)
+    lower = int(rank)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = rank - lower
+    return float(ordered[lower] * (1 - weight) + ordered[upper] * weight)
 
 
 def calculate_z_score(value: float, historical_values: List[float]) -> float:
@@ -28,13 +52,17 @@ def calculate_z_score(value: float, historical_values: List[float]) -> float:
     if len(historical_values) < 2:
         return 0.0
     
-    mean = np.mean(historical_values)
-    std = np.std(historical_values, ddof=1)
+    if np is not None:
+        mean_value = float(np.mean(historical_values))
+        std_value = float(np.std(historical_values, ddof=1))
+    else:
+        mean_value = float(mean(historical_values))
+        std_value = float(stdev(historical_values))
     
-    if std == 0:
+    if std_value == 0:
         return 0.0
     
-    return abs((value - mean) / std)
+    return abs((value - mean_value) / std_value)
 
 
 def calculate_iqr_outlier(value: float, historical_values: List[float]) -> bool:
@@ -51,8 +79,12 @@ def calculate_iqr_outlier(value: float, historical_values: List[float]) -> bool:
     if len(historical_values) < 3:
         return False
     
-    q1 = np.percentile(historical_values, 25)
-    q3 = np.percentile(historical_values, 75)
+    if np is not None:
+        q1 = float(np.percentile(historical_values, 25))
+        q3 = float(np.percentile(historical_values, 75))
+    else:
+        q1 = _percentile(historical_values, 25)
+        q3 = _percentile(historical_values, 75)
     iqr = q3 - q1
     
     lower_bound = q1 - 1.5 * iqr
