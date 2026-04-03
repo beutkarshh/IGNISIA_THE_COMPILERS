@@ -1,0 +1,98 @@
+{
+  "patient_id": "002",
+  "admission_id": "ICU_002_20240305",
+  "age": 54,
+  "gender": "F",
+  "admission_diagnosis": "Post-operative monitoring (elective surgery)",
+  "timeline": [
+    {
+      "timestamp": "2024-03-05T10:00:00Z",
+      "time_label": "Day 1 - 10:00",
+      "hours_since_admission": 0,
+      "vitals": {
+        "heart_rate": 78,
+        "systolic_bp": 132,
+        "diastolic_bp": 82,
+        "respiratory_rate": 14,
+        "temperature": 36.8,
+        "spo2": 98
+      },
+      "labs": {
+        "wbc": 8.5,
+        "lactate": 1.1,
+        "creatinine": 0.8,
+        "bun": 15,
+        "platelets": 280
+      },
+      "notes": "Post-operative day 1 following elective cholecystectomy. Hemodynamically stable. Pain controlled with IV medications. Patient alert and oriented."
+    },
+    {
+      "timestamp": "2024-03-05T18:00:00Z",
+      "time_label": "Day 1 - 18:00",
+      "hours_since_admission": 8,
+      "vitals": {
+        "heart_rate": 82,
+        "systolic_bp": 128,
+        "diastolic_bp": 80,
+        "respiratory_rate": 15,
+        "temperature": 37.0,
+        "spo2": 98
+      },
+      "labs": {
+        "wbc": 8.8,
+        "lactate": 1.2,
+        "creatinine": 0.8,
+        "bun": 16,
+        "platelets": 275
+      },
+      "notes": "Patient tolerating oral intake. Ambulating with assistance. Vital signs stable. No signs of infection or complications."
+    },
+    {
+      "timestamp": "2024-03-06T02:00:00Z",
+      "time_label": "Day 2 - 02:00",
+      "hours_since_admission": 16,
+      "vitals": {
+        "heart_rate": 76,
+        "systolic_bp": 130,
+        "diastolic_bp": 81,
+        "respiratory_rate": 14,
+        "temperature": 36.9,
+        "spo2": 99
+      },
+      "labs": {
+        "wbc": 8.3,
+        "lactate": 1.0,
+        "creatinine": 0.8,
+        "bun": 15,
+        "platelets": 278
+      },
+      "notes": "Overnight vitals stable. Patient sleeping comfortably. No concerns noted."
+    },
+    {
+      "timestamp": "2024-03-06T10:00:00Z",
+      "time_label": "Day 2 - 10:00",
+      "hours_since_admission": 24,
+      "vitals": {
+        "heart_rate": 80,
+        "systolic_bp": 126,
+        "diastolic_bp": 79,
+        "respiratory_rate": 15,
+        "temperature": 37.1,
+        "spo2": 98
+      },
+      "labs": {
+        "wbc": 8.6,
+        "lactate": 1.1,
+        "creatinine": 0.8,
+        "bun": 16,
+        "platelets": 280
+      },
+      "notes": "Excellent post-operative recovery. All vitals within normal limits. Patient ready for discharge to regular floor. No complications observed."
+    }
+  ],
+  "metadata": {
+    "scenario_type": "stable_patient",
+    "expected_flags": [],
+    "teaching_points": "Normal post-operative course. All parameters within expected ranges. No intervention needed beyond routine care."
+  }
+}
