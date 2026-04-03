@@ -8,6 +8,23 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+# Safety disclaimer for all assessments
+SAFETY_DISCLAIMER = """⚠️ CLINICAL DECISION SUPPORT TOOL - NOT A DIAGNOSTIC DEVICE
+
+This system is designed to assist healthcare professionals in clinical 
+decision-making and is NOT intended to replace clinical judgment. All 
+recommendations must be validated by qualified medical personnel.
+
+IMPORTANT LIMITATIONS:
+• This tool has not been FDA-approved for diagnostic use
+• Results are based on AI analysis and may contain errors
+• Clinical decisions should be made by qualified healthcare providers
+• Always verify critical findings with additional testing
+• Not suitable as the sole basis for patient care decisions
+
+Use of this system constitutes acceptance of these limitations."""
+
+
 class VitalSignsModel(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -81,6 +98,12 @@ class AssessmentResponse(AssessmentSummary):
     final_report: str = ""
     firebase_stored: bool = False
     storage_backend: str = "memory"
+    
+    # NEW: Safety disclaimer
+    safety_disclaimer: str = Field(
+        default=SAFETY_DISCLAIMER,
+        description="Legal disclaimer for clinical decision support"
+    )
 
 
 class HealthResponse(BaseModel):

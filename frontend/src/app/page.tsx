@@ -1,21 +1,64 @@
 "use client";
-import React, { useState, useEffect, useMemo } from "react";
-import { PatientSidebar } from "@/components/clinical/PatientSidebar";
-import { SepsisBanner } from "@/components/clinical/SepsisBanner";
-import { VitalTrend } from "@/components/clinical/VitalTrend";
-import { useClinicalStream } from "@/hooks/useClinicalStream";
-import { useClinicalData } from "@/hooks/useClinicalData";
-import { Activity, Thermometer, Wind, ClipboardList, Database, Zap, SunMoon, Bed, Sun } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+
+import React, { useState, useEffect } from "react";
+import { motion, useScroll, useTransform } from "framer-motion";
+import Link from "next/link";
+import { 
+  Activity, ShieldAlert, Network, FileText, 
+  Database, ArrowRight, Sun, SunMoon, 
+  GitMerge, BrainCircuit, CheckCircle2, Lock
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export default function Home() {
-  const { patients, isLoading: isLoadingDemographics } = useClinicalData();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+// --- Components ---
+
+const ThemeToggle = ({ theme, toggleTheme }: { theme: string, toggleTheme: () => void }) => (
+  <button
+    onClick={toggleTheme}
+    className="w-10 h-10 flex items-center justify-center bg-slate-100 dark:bg-slate-900 rounded-full border border-slate-200 dark:border-slate-800 shadow-sm hover:scale-105 transition-all text-slate-600 dark:text-slate-300 z-50"
+  >
+    {theme === "dark" ? <Sun size={18} className="text-amber-500" /> : <SunMoon size={18} className="text-blue-600" />}
+  </button>
+);
+
+const ParticleNetwork = () => {
+  // A simple Framer Motion based particle network effect for the background
+  const particles = Array.from({ length: 40 });
+  
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-40 dark:opacity-20 flex items-center justify-center">
+      {particles.map((_, i) => (
+        <motion.div
+          key={i}
+          className="absolute w-1.5 h-1.5 bg-blue-500/50 rounded-full"
+          initial={{
+            x: Math.random() * (typeof window !== "undefined" ? window.innerWidth : 1000) - 500,
+            y: Math.random() * (typeof window !== "undefined" ? window.innerHeight : 1000) - 500,
+            scale: Math.random() * 0.5 + 0.5,
+          }}
+          animate={{
+            x: Math.random() * (typeof window !== "undefined" ? window.innerWidth : 1000) - 500,
+            y: Math.random() * (typeof window !== "undefined" ? window.innerHeight : 1000) - 500,
+          }}
+          transition={{
+            duration: Math.random() * 20 + 20,
+            repeat: Infinity,
+            repeatType: "reverse",
+            ease: "linear",
+          }}
+        />
+      ))}
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-slate-50/50 to-slate-50 dark:via-[#020617]/80 dark:to-[#020617]" />
+    </div>
+  );
+};
+
+export default function LandingPage() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [mounted, setMounted] = useState(false);
+  const { scrollYProgress } = useScroll();
+  const y = useTransform(scrollYProgress, [0, 1], ["0%", "50%"]);
 
-  // On mount: read saved theme
   useEffect(() => {
     setMounted(true);
     const saved = window.localStorage.getItem("clinical-monitor-theme") as "light" | "dark" | null;
@@ -26,7 +69,6 @@ export default function Home() {
     }
   }, []);
 
-  // Apply theme to DOM whenever it changes
   useEffect(() => {
     if (!mounted) return;
     const root = document.documentElement;
@@ -38,323 +80,217 @@ export default function Home() {
     window.localStorage.setItem("clinical-monitor-theme", theme);
   }, [theme, mounted]);
 
-  const { vitals } = useClinicalStream(patients.map(p => p.subject_id));
-  const effectiveSelectedId = selectedId ?? patients[0]?.subject_id ?? null;
+  const toggleTheme = () => setTheme(prev => prev === "dark" ? "light" : "dark");
 
-  const selectedPatient = useMemo(() => {
-    return patients.find(p => p.subject_id === effectiveSelectedId);
-  }, [patients, effectiveSelectedId]);
-
-  if (isLoadingDemographics || !mounted) {
-    return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-white dark:bg-slate-950 gap-4 transition-colors duration-500">
-         <div className="relative">
-            <Activity className="text-blue-600 animate-pulse" size={48} />
-            <div className="absolute inset-0 bg-blue-400 blur-2xl opacity-20 animate-pulse" />
-         </div>
-        <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.4em] animate-pulse">Establishing Secure Stream</span>
-      </div>
-    );
-  }
-
-  if (!selectedPatient) return null;
-
-  const currentVitals = selectedPatient ? (vitals[selectedPatient.subject_id] || []) : [];
-  
-  // Separate Vitals by ItemID (HR: 211/220045)
-  const hrVitals = currentVitals.filter(v => v.itemid === 211 || v.itemid === 220045);
-  
-  const latestPulse = hrVitals[hrVitals.length - 1];
-  // Unified Alert logic: either clinical data flags it, or real-time telemetry is outlier
-  const isAlert = selectedPatient.is_alert || latestPulse?.is_outlier || (latestPulse?.valuenum > 130);
-  const sepsisProbability = isAlert ? 84 : (selectedPatient?.diagnosis?.toUpperCase().includes("SEPSIS") ? 42 : 12);
-  const status = isAlert ? "critical" : (sepsisProbability > 15 ? "moderate" : "stable");
-
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
-  };
-
-  // Dynamic bed assignment derived from patient ID
-  const bedUnit = `ICU-${String(selectedPatient.subject_id % 6 + 1).padStart(2, "0")}${String.fromCharCode(65 + (selectedPatient.subject_id % 4))}`;
-
-  // Comprehensive dynamic clinical protocols based on diagnosis
-  const getProtocols = (diagnosis: string = "") => {
-    const d = diagnosis.toUpperCase();
-
-    if (d.includes("SEPSIS") || d.includes("SEPTIC")) return [
-      { title: "Fluid Resuscitation", desc: "30 ml/kg crystalloid bolus in first 3 hrs. Reassess at 6 hrs.", status: "Critical" },
-      { title: "Broad-Spectrum Antibiotics", desc: "Vancomycin + Piperacillin/Tazobactam Q8H. Culture-guided de-escalation.", status: "Active" },
-      { title: "Source Control", desc: "Surgical/radiology consult for drainage or debridement.", status: "Active" },
-      { title: "Vasopressors (PRN)", desc: "Norepinephrine target MAP ≥ 65 mmHg. Escalate as needed.", status: "Pending" },
-    ];
-
-    if (d.includes("PNEUMONIA")) return [
-      { title: "Oxygen Therapy", desc: "Target SpO₂ 92–96% via nasal cannula. Consider HFNC if refractory.", status: "Active" },
-      { title: "Antibiotic Coverage", desc: "Azithromycin + Beta-lactam (community); Vanc + Cefepime (HAP).", status: "Active" },
-      { title: "Sputum & Blood Cultures", desc: "Awaiting final sensitivity — repeat if no improvement at 48h.", status: "Pending" },
-      { title: "Early Mobilization", desc: "Breathing exercises Q4H. Incentive spirometry TID.", status: "Stable" },
-    ];
-
-    if (d.includes("ARREST") || d.includes("CARDIAC") || d.includes("HEART FAILURE")) return [
-      { title: "Cardiac Monitoring", desc: "Continuous 12-lead ECG. Troponin Q6H × 3.", status: "Critical" },
-      { title: "Diuresis", desc: "IV Lasix 40 mg STAT. Target negative fluid balance 1–2 L/24h.", status: "Active" },
-      { title: "Cardiology Consult", desc: "Urgent echocardiogram ordered. Hemodynamic optimization.", status: "Active" },
-      { title: "Anticoagulation", desc: "Heparin infusion per weight-based protocol. PTT Q6H.", status: "Pending" },
-    ];
-
-    if (d.includes("STROKE") || d.includes("CVA") || d.includes("CEREBROVASCULAR")) return [
-      { title: "Neurological Monitoring", desc: "NIHSS score Q2H. Pupil checks Q1H.", status: "Critical" },
-      { title: "tPA / Thrombectomy", desc: "Within 4.5h window — neurology activating stroke protocol.", status: "Active" },
-      { title: "BP Management", desc: "Target < 185/110 mmHg pre-tPA. Labetalol/Nicardipine PRN.", status: "Active" },
-      { title: "Stroke Workup", desc: "CT Angiography & Diffusion MRI ordered. Embolic source screen.", status: "Pending" },
-    ];
-
-    if (d.includes("GI") || d.includes("BLEED") || d.includes("HEMORRHAGE")) return [
-      { title: "Two Large-Bore IV Access", desc: "Active resuscitation in progress. Type & Cross 4 units PRBCs.", status: "Critical" },
-      { title: "GI Consult/Endoscopy", desc: "Urgent EGD/colonoscopy for source localization.", status: "Active" },
-      { title: "Proton Pump Inhibitor", desc: "Pantoprazole 80 mg IV bolus + 8 mg/hr infusion.", status: "Active" },
-      { title: "Hemodynamic Monitoring", desc: "Arterial line placed. MAP target ≥ 65 mmHg.", status: "Pending" },
-    ];
-
-    if (d.includes("RENAL") || d.includes("KIDNEY") || d.includes("AKI") || d.includes("FAILURE")) return [
-      { title: "Fluid Balance", desc: "Strict I/O monitoring. Restrict IV fluids if fluid-overloaded.", status: "Active" },
-      { title: "Nephrotoxin Avoidance", desc: "Hold NSAIDs, aminoglycosides, IV contrast. Review all meds.", status: "Active" },
-      { title: "Dialysis Assessment", desc: "Nephrology consult placed. CRRT initiation criteria under review.", status: "Pending" },
-      { title: "Electrolyte Correction", desc: "Treat hyperkalemia per protocol. Kayexalate PRN.", status: "Stable" },
-    ];
-
-    if (d.includes("COPD") || d.includes("RESPIRATORY") || d.includes("HYPOXIA")) return [
-      { title: "Bronchodilators", desc: "Albuterol + Ipratropium Q4H nebulizers. Titrate to response.", status: "Active" },
-      { title: "NIV / BiPAP", desc: "Non-invasive ventilation initiated. IPAP 14 / EPAP 5.", status: "Active" },
-      { title: "Systemic Steroids", desc: "Methylprednisolone 125 mg IV Q8H × 3 days.", status: "Stable" },
-      { title: "Intubation Readiness", desc: "Respiratory threshold met — anesthesia on standby.", status: "Pending" },
-    ];
-
-    if (d.includes("HYPERTENSION") || d.includes("HYPOTENSION")) return [
-      { title: "BP Monitoring", desc: "Arterial line placed. Auto-cycling NIBP Q15 min.", status: "Active" },
-      { title: "Vasopressor / Anti-hypertensive", desc: "Norepinephrine/Labetalol titrated to MAP target.", status: "Active" },
-      { title: "End-Organ Assessment", desc: "Creatinine, troponin, lactate Q6H. Fundoscopy if hypertensive.", status: "Pending" },
-      { title: "Euvolemia Target", desc: "Fluid resuscitation vs. diuresis based on fluid status.", status: "Stable" },
-    ];
-
-    if (d.includes("OVERDOSE") || d.includes("TOXIC") || d.includes("INGESTION")) return [
-      { title: "Toxicology Consult", desc: "Poison Control notified. Toxscreen pending.", status: "Critical" },
-      { title: "GI Decontamination", desc: "Activated charcoal if < 1h post-ingestion and airway intact.", status: "Active" },
-      { title: "Antidote Administration", desc: "N-acetylcysteine / Naloxone per substance protocol.", status: "Active" },
-      { title: "Renal/Hepatic Support", desc: "LFTs, UDS, and metabolic panel Q6H. Dialysis PRN.", status: "Pending" },
-    ];
-
-    // Default general ICU monitoring
-    return [
-      { title: "Vital Sign Monitoring", desc: "Q2H documentation. Continuous pulse oximetry.", status: "Active" },
-      { title: "DVT Prophylaxis", desc: "Enoxaparin 40 mg SQ daily. Sequential compression device active.", status: "Active" },
-      { title: "Fall & Pressure Injury Prevention", desc: "Hourly repositioning. Foam mattress overlay applied.", status: "Active" },
-      { title: "Nutrition Assessment", desc: "Dietitian consult placed. Enteral nutrition goal 25 kcal/kg/day.", status: "Pending" },
-    ];
-  };
-
-  const protocols = getProtocols(selectedPatient?.diagnosis);
+  if (!mounted) return null;
 
   return (
-    <main className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden antialiased text-slate-900 dark:text-slate-100 transition-colors duration-500">
-      {/* 1. Clinical Rail */}
-      <PatientSidebar 
-        patients={patients.map(p => ({
-          subject_id: p.subject_id,
-          gender: p.gender,
-          diagnosis: p.diagnosis,
-          bpm: vitals[p.subject_id]?.slice(-1)[0]?.valuenum || p.bpm || 0,
-          is_alert: p.is_alert || vitals[p.subject_id]?.slice(-1)[0]?.is_outlier || (vitals[p.subject_id]?.slice(-1)[0]?.valuenum > 130)
-        }))} 
-        selectedId={effectiveSelectedId!} 
-        onSelect={setSelectedId} 
-      />
-
-      {/* 2. Primary Clinical Workspace */}
-      <div className="flex-1 overflow-y-auto px-12 py-10 space-y-8 custom-scrollbar">
-        
-        {/* Dynamic Header Information */}
-        <motion.div 
-          key={selectedPatient.subject_id}
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between"
-        >
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-xl shadow-blue-500/20">
-                <Zap size={24} fill="currentColor" />
-              </div>
-              <div>
-                <h2 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] leading-none mb-1.5">Intensive Care Unit</h2>
-                <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
-                  PATIENT <span className="text-blue-600">MONITOR</span>
-                </h1>
-              </div>
-            </div>
-
-            <div className="h-10 w-px bg-slate-200 dark:bg-slate-800 mx-2" />
-
-            <div className="flex items-center gap-8">
-               <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Patient ID</p>
-                  <p className="text-sm font-black text-slate-900 dark:text-slate-100 font-mono">PH-{selectedPatient.subject_id}</p>
-               </div>
-               <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Gender</p>
-                  <p className="text-sm font-black text-slate-900 dark:text-slate-100">{selectedPatient.gender === "M" ? "MALE" : "FEMALE"}</p>
-               </div>
-               <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Bed Assignment</p>
-                  <p className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                    <Bed size={14} className="text-blue-600" />
-                    {bedUnit}
-                  </p>
-               </div>
-               <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</p>
-                  <p className={cn(
-                    "text-sm font-black uppercase",
-                    isAlert ? "text-rose-600" : "text-emerald-600"
-                  )}>{isAlert ? "CRITICAL" : "STABLE"}</p>
-               </div>
-            </div>
-          </div>
-
+    <div className="min-h-screen bg-slate-50 dark:bg-[#020617] text-slate-900 dark:text-slate-50 font-sans selection:bg-blue-500/30 overflow-x-hidden transition-colors duration-500">
+      {/* Navigation */}
+      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-white/60 dark:bg-[#020617]/60 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-sm">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Live Feed</span>
+            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-600/20">
+              <Activity size={24} />
             </div>
-
-            {/* Icon-only theme toggle */}
-            <button
-              type="button"
-              onClick={toggleTheme}
-              title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-              className="w-10 h-10 flex items-center justify-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-slate-600 dark:text-slate-300"
-            >
-              {theme === "dark" ? <Sun size={16} className="text-amber-500" /> : <SunMoon size={16} className="text-blue-600" />}
-            </button>
+            <div>
+              <h1 className="text-lg font-black tracking-tighter leading-tight">IGNISIA <span className="text-blue-600">AI</span></h1>
+              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Diagnostic Risk Assistant</p>
+            </div>
           </div>
-        </motion.div>
-
-        {/* Predictive Analytics Section */}
-        <motion.section 
-          key={`banner-${selectedPatient.subject_id}`}
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1 }}
-          className="w-full"
-        >
-          <SepsisBanner 
-            probability={sepsisProbability} 
-            status={status} 
-            lastCheck={new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })} 
-          />
-        </motion.section>
-
-        {/* Real-Time Telemetry Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-          <VitalTrend 
-            label="Heart Rate Telemetry" 
-            unit="BPM" 
-            color="#2563EB" 
-            data={currentVitals.filter(v => [211, 220045].includes(v.itemid))}
-            className="shadow-xl shadow-blue-500/5"
-          />
-          <VitalTrend 
-            label="MAP Trends" 
-            unit="mmHg" 
-            color="#0891B2" 
-            data={currentVitals.filter(v => [456, 52, 6702, 443, 220052, 220181, 225312].includes(v.itemid))} 
-          />
+          
+          <div className="flex items-center gap-6">
+            <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
+            <Link 
+              href="/login"
+              className="px-6 py-2.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-bold uppercase tracking-wider hover:scale-105 transition-transform flex items-center gap-2 shadow-xl shadow-slate-900/10 dark:shadow-white/10"
+            >
+              <Lock size={16} /> Access Portal
+            </Link>
+          </div>
         </div>
+      </nav>
 
-        {/* Clinical Case Explorer */}
-        <motion.section 
-          key={`profile-${selectedPatient.subject_id}`}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-2xl shadow-slate-200/20 dark:shadow-black/40 overflow-hidden"
-        >
-          <div className="grid grid-cols-1 lg:grid-cols-3 divide-x divide-slate-100 dark:divide-slate-800">
-            {/* Metadata Panel */}
-            <div className="p-10 bg-slate-50/50 dark:bg-slate-900/50">
-              <div className="flex items-center gap-3 mb-8">
-                <div className="w-8 h-8 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 flex items-center justify-center">
-                  <Database size={16} />
+      {/* Hero Section */}
+      <section className="relative min-h-[90vh] flex flex-col justify-center pt-20 overflow-hidden">
+        <ParticleNetwork />
+        
+        <div className="max-w-7xl mx-auto px-6 relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="flex flex-col gap-6"
+          >
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 w-fit">
+              <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+              <span className="text-xs font-bold uppercase tracking-widest">Life-Saving Intervention</span>
+            </div>
+            
+            <h1 className="text-5xl lg:text-7xl font-black tracking-tighter leading-[1.1]">
+              Predicting ICU Risks <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">Before They Are Fatal.</span>
+            </h1>
+            
+            <p className="text-lg text-slate-600 dark:text-slate-400 font-medium max-w-xl leading-relaxed">
+              In fast-paced ICU environments, signals get lost in shift changes. Our multi-agent intelligence synthesizes unstructured notes, temporal labs, and clinical guidelines to alert doctors of sepsis and organ failure hours ahead of time.
+            </p>
+            
+            <div className="flex flex-wrap items-center gap-4 mt-4">
+              <Link href="/login" className="px-8 py-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase tracking-wider transition-colors flex items-center gap-2 shadow-xl shadow-blue-500/30">
+                Launch Dashboard <ArrowRight size={18} />
+              </Link>
+              <a href="#pipeline" className="px-8 py-4 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold uppercase tracking-wider transition-colors">
+                How It Works
+              </a>
+            </div>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 1, delay: 0.2 }}
+            className="relative"
+            style={{ y }}
+          >
+            {/* Abstract UI Representation */}
+            <div className="relative w-full aspect-square md:aspect-[4/3] rounded-[2rem] border border-white/20 bg-white/40 dark:bg-slate-900/40 backdrop-blur-3xl shadow-2xl overflow-hidden p-6 gap-4 flex flex-col">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+                <div className="flex items-center gap-2">
+                  <Activity className="text-blue-500" size={20} />
+                  <span className="font-mono text-sm font-bold">SYNTHESIS_ENGINE</span>
                 </div>
-                <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">Clinical Profile</h3>
+                <div className="px-3 py-1 bg-rose-500/20 text-rose-500 text-[10px] font-black uppercase tracking-widest rounded-lg animate-pulse">
+                  Anomaly Detected
+                </div>
               </div>
               
-              <div className="space-y-6">
-                {[
-                  { label: "Admission Type", val: selectedPatient.admission_type || "N/A", icon: <Activity size={14} className="text-blue-600" />},
-                  { label: "Insurance Tier", val: selectedPatient.insurance || "N/A", icon: <Thermometer size={14} className="text-rose-500" />},
-                  { label: "Language", val: selectedPatient.language || "EN-US", icon: <Wind size={14} className="text-emerald-500" />}
-                ].map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                       {item.icon}
-                       <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{item.label}</span>
-                    </div>
-                    <span className="text-sm font-black text-slate-800 dark:text-slate-200 font-mono uppercase tracking-tighter">{item.val}</span>
+              <div className="flex-1 flex gap-4">
+                {/* Agent Nodes */}
+                <div className="w-1/3 flex flex-col justify-between p-4 rounded-xl bg-white/50 dark:bg-black/50 border border-slate-200 dark:border-slate-800">
+                  <FileText className="text-slate-500 mb-2" size={20} />
+                  <div className="h-2 w-full bg-slate-200 dark:bg-slate-800 rounded mb-2" />
+                  <div className="h-2 w-2/3 bg-slate-200 dark:bg-slate-800 rounded" />
+                </div>
+                <div className="w-2/3 relative flex flex-col items-center justify-center p-4 rounded-xl bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border border-blue-500/20">
+                  <Network className="text-blue-500 absolute top-4 left-4 opacity-50" size={100} />
+                  <div className="relative z-10 text-center">
+                     <span className="text-4xl font-black text-slate-800 dark:text-white">84%</span>
+                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Sepsis Probability</p>
                   </div>
-                ))}
-              </div>
-
-              <div className={cn(
-                "mt-10 p-6 rounded-3xl text-white shadow-xl ring-4",
-                isAlert
-                  ? "bg-rose-600 shadow-rose-500/20 ring-rose-600/10"
-                  : "bg-blue-600 shadow-blue-500/20 ring-blue-600/10"
-              )}>
-                 <div className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80 mb-2">Primary Diagnosis</div>
-                 <div className="text-lg font-black tracking-tight leading-tight uppercase">
-                    {selectedPatient.diagnosis || "CLINICAL EVALUATION"}
-                 </div>
+                </div>
               </div>
             </div>
 
-            {/* Protocol Panel */}
-            <div className="lg:col-span-2 p-10 relative">
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-3 text-slate-800 dark:text-slate-100">
-                  <ClipboardList size={20} className="text-blue-600" />
-                  <h3 className="text-sm font-black uppercase tracking-tight">Active Clinical Protocols</h3>
-                </div>
-                <div className={cn(
-                  "px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest",
-                  isAlert ? "bg-rose-50 dark:bg-rose-900/50 text-rose-600" : "bg-blue-50 dark:bg-blue-900/50 text-blue-600"
-                )}>
-                  {isAlert ? "⚠ Urgent" : "Live Sync"}
-                </div>
-              </div>
+            {/* Glowing Orbs behind the UI */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/4 h-3/4 bg-blue-500/30 blur-[100px] -z-10 rounded-full" />
+            <div className="absolute bottom-0 right-0 w-1/2 h-1/2 bg-cyan-500/20 blur-[80px] -z-10 rounded-full" />
+          </motion.div>
+        </div>
+      </section>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {protocols.map((protocol, idx) => (
-                  <div key={idx} className="p-6 rounded-[2rem] border border-slate-100 dark:border-slate-800 hover:border-blue-200 dark:hover:border-blue-900 hover:bg-blue-50/20 dark:hover:bg-blue-900/20 transition-all group">
-                    <div className="flex justify-between items-center mb-1.5">
-                      <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase">{protocol.title}</h4>
-                      <span className={cn(
-                        "text-[8px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg",
-                        protocol.status === "Critical" ? "bg-rose-100 text-rose-600 animate-pulse" : 
-                        protocol.status === "Pending" ? "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" :
-                        "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
-                      )}>{protocol.status}</span>
-                    </div>
-                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 group-hover:text-slate-500 dark:group-hover:text-slate-400 leading-relaxed uppercase tracking-wider">
-                      {protocol.desc}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
+      {/* Multi-Agent Pipeline Section */}
+      <section id="pipeline" className="py-32 relative z-10 bg-white dark:bg-[#060B19] border-t border-slate-200 dark:border-slate-800">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center max-w-3xl mx-auto mb-20">
+            <h2 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.3em] mb-4">Under The Hood</h2>
+            <h3 className="text-3xl md:text-5xl font-black tracking-tight mb-6">Autonomous Multi-Agent Collaboration</h3>
+            <p className="text-slate-600 dark:text-slate-400 text-lg">Four highly specialized AI agents working in continuous parallel to ensure no clinical signal is ignored.</p>
           </div>
-        </motion.section>
-      </div>
-    </main>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              { icon: FileText, title: "Note Parser Agent", desc: "Extracts symptom histories and subtle cues from unstructured clinical notes written across different shifts.", color: "text-blue-500" },
+              { icon: GitMerge, title: "Temporal Lab Mapper", desc: "Maps shifting lab anomalies (WBC, lactate) into a precise chronological timeline.", color: "text-cyan-500" },
+              { icon: Database, title: "Guideline RAG", desc: "Cross-references patient patterns against thousands of standard medical guidelines in real-time.", color: "text-indigo-500" },
+              { icon: BrainCircuit, title: "Chief Synthesis", desc: "Integrates all outputs into a unified diagnostic risk report and flags contradictory lab errors.", color: "text-rose-500" }
+            ].map((agent, i) => (
+              <motion.div 
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="p-8 rounded-[2rem] bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
+              >
+                <div className={`w-12 h-12 rounded-xl bg-white dark:bg-[#020617] shadow-sm flex items-center justify-center mb-6 border border-slate-100 dark:border-slate-800 ${agent.color}`}>
+                  <agent.icon size={24} />
+                </div>
+                <h4 className="text-xl font-bold mb-3">{agent.title}</h4>
+                <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">{agent.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Safety & Outlier Detection */}
+      <section className="py-32 relative z-10">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col lg:flex-row gap-16 items-center">
+            <motion.div 
+              initial={{ opacity: 0, x: -30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="lg:w-1/2"
+            >
+              <div className="aspect-square md:aspect-video lg:aspect-square rounded-[3rem] bg-slate-900 dark:bg-[#060B19] border border-slate-800 p-8 lg:p-12 relative overflow-hidden flex flex-col justify-between">
+                <div>
+                  <ShieldAlert className="text-rose-500 mb-6" size={40} />
+                  <h4 className="text-white text-2xl font-black mb-2">Lab Error Rejected</h4>
+                  <p className="text-slate-400 font-mono text-sm max-w-sm border-l-2 border-slate-700 pl-4 py-2">
+                    "Incoming WBC reading of 2.1k/uL contradicts 3 days of steady 11.5k/uL data. Probable draw error. Redraw required. Risk report unaltered."
+                  </p>
+                </div>
+                
+                <div className="space-y-3">
+                  {[
+                    "Timeline Integrity Preserved",
+                    "Do NO Harm Architecture",
+                    "False Positive Reduction"
+                  ].map((feat, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <CheckCircle2 className="text-emerald-500" size={20} />
+                      <span className="text-slate-300 text-sm font-bold uppercase tracking-wider">{feat}</span>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-rose-500/20 blur-[80px] rounded-full point-events-none" />
+              </div>
+            </motion.div>
+            
+            <motion.div 
+              initial={{ opacity: 0, x: 30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="lg:w-1/2 space-y-6"
+            >
+              <h2 className="text-[10px] font-black text-rose-500 uppercase tracking-[0.3em]">Patient Safety First</h2>
+              <h3 className="text-4xl md:text-5xl font-black tracking-tight leading-[1.1]">The System Knows <br/>When To Suspect Humans.</h3>
+              <p className="text-xl text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
+                Our Chief Synthesis Agent constantly monitors incoming data against historical trends. 
+              </p>
+              <p className="text-lg text-slate-600 dark:text-slate-400 leading-relaxed">
+                If a new lab result is a statistical outlier that contradicts days of reliable data, it isn't blindly accepted. The AI flags it as a probable error, refusing to alter the patient's diagnostic risk until a confirmed redraw is received. 
+                <br/><br/>
+                <strong className="text-slate-900 dark:text-white">This maintains diagnostic integrity and vastly reduces alarm fatigue.</strong>
+              </p>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+      
+      {/* Footer / CTA */}
+      <footer className="py-20 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-[#060B19] text-center px-6">
+        <h2 className="text-3xl font-black mb-8">Ready to explore the dashboard?</h2>
+        <Link href="/login" className="inline-flex items-center gap-3 px-10 py-5 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black uppercase tracking-widest hover:scale-105 transition-transform shadow-2xl">
+          <Lock size={20} /> Enter Sandbox
+        </Link>
+        <p className="mt-12 text-sm text-slate-500 uppercase tracking-widest font-bold">
+           Decision Support Only. Not for Clinical Diagnosis.
+        </p>
+      </footer>
+    </div>
   );
 }

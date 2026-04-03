@@ -30,6 +30,7 @@ export function useClinicalData() {
             gender,
             dob,
             admissions (
+              admittime,
               admission_type,
               diagnosis,
               insurance,
@@ -51,23 +52,36 @@ export function useClinicalData() {
           return acc;
         }, {}) || {};
 
-        const criticalTerms = ["SEPSIS", "PNEUMONIA", "FEVER", "HYPOTENSION", "FAILURE", "DISTRESS", "ARREST", "BRADYCARDIA"];
+        const criticalTerms = [
+          "SEPSIS","SEPTIC","PNEUMONIA","FEVER","HYPOTENSION","FAILURE",
+          "DISTRESS","ARREST","BRADYCARDIA","HEMORRHAGE","STROKE","CVA",
+          "ARDS","SHOCK","RESPIRATORY FAILURE","CARDIAC","INFARCTION",
+          "INTRACRANIAL","COMA","TRAUMA","SEPTICEMIA",
+        ];
 
         const formatted = data.map((p: any) => {
-          const mainDiagnosis = p.admissions?.[0]?.diagnosis || "Clinical Evaluation";
-          const isCriticalDx = criticalTerms.some(term => mainDiagnosis.toUpperCase().includes(term));
+          // Pick the most-recent admission's diagnosis
+          const admissions: any[] = p.admissions || [];
+          // Sort by admittime descending if available, otherwise take last element
+          const sorted = [...admissions].sort((a, b) => {
+            if (a.admittime && b.admittime) return new Date(b.admittime).getTime() - new Date(a.admittime).getTime();
+            return 0;
+          });
+          const latestAdmission = sorted[0] || {};
+          const mainDiagnosis = (latestAdmission.diagnosis || "Clinical Evaluation").toUpperCase();
+          const isCriticalDx = criticalTerms.some(term => mainDiagnosis.includes(term));
           const hasAbnormalLabs = (abnormalCounts[p.subject_id] || 0) > 50;
 
           return {
             subject_id: p.subject_id,
             gender: p.gender,
             dob: new Date(p.dob).toLocaleDateString(),
-            admission_type: p.admissions?.[0]?.admission_type || "N/A",
-            diagnosis: mainDiagnosis,
-            insurance: p.admissions?.[0]?.insurance,
-            language: p.admissions?.[0]?.language,
+            admission_type: latestAdmission.admission_type || "N/A",
+            diagnosis: mainDiagnosis,   // already uppercased — consistent with keyword matching
+            insurance: latestAdmission.insurance,
+            language: latestAdmission.language,
             is_alert: isCriticalDx || hasAbnormalLabs,
-            bpm: 60 + Math.floor(Math.random() * 40) + (isCriticalDx ? 30 : 0) // Simulated current BPM for registry, will be updated by telemetry
+            bpm: 60 + Math.floor(Math.random() * 40) + (isCriticalDx ? 30 : 0)
           };
         });
 

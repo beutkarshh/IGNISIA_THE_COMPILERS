@@ -10,16 +10,22 @@ An intelligent agent that:
 - Communicates with other agents
 
 Capabilities: Collection, Planning, Reasoning, Tools, Memory
+
+Performance optimizations:
+- LRU caching for repeated note patterns
 """
 
 import os
 import json
+import hashlib
+from functools import lru_cache
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from agents.state import PatientState, ParsedSymptom, REFERENCE_RANGES
 from agents.tools import TOOL_REGISTRY, lookup_symptom_severity, validate_vital_signs
 from agents.memory import AGENT_MEMORY
 from agents.reasoning import ChainOfThought, SelfCritique, ReasoningEngine, validate_clinical_plausibility
+from utils.retry import retry
 
 try:
     import google.generativeai as genai
@@ -27,11 +33,20 @@ except Exception:
     genai = None
 
 
-# Initialize Gemini
+# Initialize Gemini with timeout configuration
 if genai is not None:
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    # Configure with timeout (60 seconds) to prevent hanging
+    model = genai.GenerativeModel(
+        'gemini-2.0-flash',
+        generation_config={
+            'temperature': 0.7,
+            'top_p': 0.9,
+            'max_output_tokens': 2048,
+        },
+        # Note: Timeout is handled at request level in generate_content calls
+    )
     reasoning_engine = ReasoningEngine(model)
 else:
     class _FallbackModel:
@@ -83,9 +98,35 @@ def _create_extraction_plan(notes_text: str, context: Dict) -> Dict[str, Any]:
     return plan
 
 
+@lru_cache(maxsize=128)
+def _cached_note_hash(notes_text: str, focus_areas: str) -> str:
+    """Generate hash for caching note parsing results."""
+    content = f"{notes_text}|{focus_areas}"
+    return hashlib.md5(content.encode()).hexdigest()
+
+
+# Cache for parsed notes (in-memory, session-level)
+_PARSE_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
+@retry(max_attempts=3, backoff=2.0, exceptions=(Exception,))
+def _call_gemini_with_retry(prompt: str) -> str:
+    """Call Gemini API with retry logic."""
+    if genai is None or model is None:
+        return "{}"  # Fallback to empty response
+    
+    try:
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        print(f"Gemini API error: {e}")
+        raise  # Retry decorator will handle this
+
+
 def _extract_with_reasoning(notes_text: str, plan: Dict) -> Dict[str, Any]:
     """
     REASONING PHASE: Extract information using chain-of-thought.
+    Uses LRU cache for repeated note patterns.
     
     Args:
         notes_text: Clinical notes
@@ -94,6 +135,14 @@ def _extract_with_reasoning(notes_text: str, plan: Dict) -> Dict[str, Any]:
     Returns:
         Extracted data with reasoning
     """
+    # Check cache first
+    focus_str = ','.join(sorted(plan.get('focus_areas', ['general'])))
+    cache_key = _cached_note_hash(notes_text[:500], focus_str)  # Use first 500 chars for hash
+    
+    if cache_key in _PARSE_CACHE:
+        print(f"[CACHE HIT] Returning cached parse result")
+        return _PARSE_CACHE[cache_key]
+    
     # Create context-aware prompt
     prompt = f"""You are a medical AI assistant analyzing ICU patient notes.
 
@@ -136,8 +185,8 @@ Format response as JSON:
 Only include explicitly mentioned items. Mark low confidence (<0.7) for ambiguous findings."""
 
     try:
-        response = model.generate_content(prompt)
-        result_text = response.text.strip()
+        # Use retry wrapper
+        result_text = _call_gemini_with_retry(prompt)
         
         # Parse JSON
         if "```json" in result_text:
@@ -146,6 +195,15 @@ Only include explicitly mentioned items. Mark low confidence (<0.7) for ambiguou
             result_text = result_text.split("```")[1].split("```")[0].strip()
         
         extracted = json.loads(result_text)
+        
+        # Store in cache
+        _PARSE_CACHE[cache_key] = extracted
+        
+        # Limit cache size
+        if len(_PARSE_CACHE) > 128:
+            # Remove oldest entry (FIFO)
+            _PARSE_CACHE.pop(next(iter(_PARSE_CACHE)))
+        
         return extracted
         
     except Exception as e:

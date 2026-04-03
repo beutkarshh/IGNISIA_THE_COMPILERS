@@ -1,0 +1,114 @@
+{
+  "patient_id": "002", 
+  "admission_id": "ADM002",
+  "age": 45,
+  "gender": "F", 
+  "admission_diagnosis": "Urinary tract infection",
+  "timeline": [
+    {
+      "timestamp": "2024-01-15T10:00:00Z",
+      "time_label": "Day 1 - 10:00",
+      "hours_since_admission": 0,
+      "vitals": {
+        "heart_rate": 85,
+        "systolic_bp": 125,
+        "diastolic_bp": 80,
+        "respiratory_rate": 16,
+        "temperature": 37.8,
+        "spo2": 98
+      },
+      "labs": {
+        "wbc": 11.2,
+        "lactate": 1.1,
+        "creatinine": 0.9,
+        "bun": 15,
+        "platelets": 280
+      },
+      "notes": "45-year-old female presents with dysuria, urinary frequency, and suprapubic pain for 2 days. Low-grade fever. Alert and oriented. Urinalysis shows >100 WBCs, nitrites positive, leukocyte esterase positive. Started on cefuroxime 500mg BID. Hemodynamically stable."
+    },
+    {
+      "timestamp": "2024-01-15T16:00:00Z", 
+      "time_label": "Day 1 - 16:00",
+      "hours_since_admission": 6,
+      "vitals": {
+        "heart_rate": 82,
+        "systolic_bp": 128,
+        "diastolic_bp": 82,
+        "respiratory_rate": 16,
+        "temperature": 37.5,
+        "spo2": 98
+      },
+      "labs": {
+        "wbc": 10.8,
+        "lactate": 1.0,
+        "creatinine": 0.9,
+        "bun": 15,
+        "platelets": 285
+      },
+      "notes": "Patient feeling better after antibiotics. Temperature trending down. Adequate oral intake. Pain improved. Urinalysis shows decreasing WBC count. No signs of systemic infection."
+    },
+    {
+      "timestamp": "2024-01-15T22:00:00Z",
+      "time_label": "Day 1 - 22:00", 
+      "hours_since_admission": 12,
+      "vitals": {
+        "heart_rate": 78,
+        "systolic_bp": 120,
+        "diastolic_bp": 78,
+        "respiratory_rate": 15,
+        "temperature": 37.0,
+        "spo2": 99
+      },
+      "labs": {
+        "wbc": 9.5,
+        "lactate": 0.9,
+        "creatinine": 0.8,
+        "bun": 14,
+        "platelets": 290
+      },
+      "notes": "Significant clinical improvement. Fever resolved. Patient ambulating without issues. Minimal dysuria remaining. Blood cultures negative at 24 hours. Responding well to antibiotic therapy."
+    },
+    {
+      "timestamp": "2024-01-16T04:00:00Z",
+      "time_label": "Day 2 - 04:00",
+      "hours_since_admission": 18,
+      "vitals": {
+        "heart_rate": 76,
+        "systolic_bp": 118,
+        "diastolic_bp": 76,
+        "respiratory_rate": 15,
+        "temperature": 36.8,
+        "spo2": 99
+      },
+      "labs": {
+        "wbc": 8.9,
+        "lactate": 0.8,
+        "creatinine": 0.8,
+        "bun": 13,
+        "platelets": 295
+      },
+      "notes": "Patient asymptomatic overnight. Afebrile. Normal vital signs. WBC count normalizing. Creatinine stable. Urine output adequate. Ready for discharge on oral antibiotics."
+    },
+    {
+      "timestamp": "2024-01-16T10:00:00Z",
+      "time_label": "Day 2 - 10:00",
+      "hours_since_admission": 24, 
+      "vitals": {
+        "heart_rate": 75,
+        "systolic_bp": 115,
+        "diastolic_bp": 75,
+        "respiratory_rate": 14,
+        "temperature": 36.5,
+        "spo2": 99
+      },
+      "labs": {
+        "wbc": 8.2,
+        "lactate": 0.7,
+        "creatinine": 0.7,
+        "bun": 12,
+        "platelets": 300
+      },
+      "notes": "Patient ready for discharge. Completed 24 hours of IV antibiotics. All vitals normalized. Laboratory values improved. Prescribed oral cefuroxime 500mg BID for 7 days. Follow-up with primary care in 1 week."
+    }
+  ]
+}
