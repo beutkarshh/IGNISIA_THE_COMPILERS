@@ -493,59 +493,7 @@ export default function DashboardPage() {
               </Link>
             )}
 
-            {/* 2. AI Assessment */}
-            <button 
-              onClick={assessmentLoading ? undefined : runAssessment}
-              disabled={assessmentLoading || !selectedPatient}
-              title={assessmentLoading ? "Running AI Assessment..." : "Run AI Assessment"}
-              className={cn(
-                "relative flex items-center gap-1.5 px-3 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-sm transition-all duration-200",
-                assessmentLoading 
-                  ? "bg-blue-600/10 border-blue-600/20 text-blue-600 cursor-not-allowed" 
-                  : currentAssessment
-                  ? "bg-emerald-600/10 border-emerald-600/20 text-emerald-600 hover:bg-emerald-600/20"
-                  : "bg-blue-600 border-blue-600 text-white hover:bg-blue-700",
-                "border"
-              )}
-            >
-              {assessmentLoading ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  Analyzing...
-                </>
-              ) : currentAssessment ? (
-                <>
-                  <Brain size={14} />
-                  Risk: {currentAssessment.risk_score}
-                </>
-              ) : (
-                <>
-                  <Brain size={14} />
-                  AI Assess
-                </>
-              )}
-              {currentAssessment && !assessmentLoading && (
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-emerald-500 text-white text-[8px] font-black rounded-full flex items-center justify-center">✓</span>
-              )}
-            </button>
-
-            {/* 3. Shift Handover Report */}
-            <button 
-              onClick={() => setShowHandoverReport(true)}
-              disabled={!selectedPatient}
-              title="Generate Shift Handover Report"
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-sm transition-all duration-200 border",
-                selectedPatient
-                  ? "bg-purple-600 border-purple-600 text-white hover:bg-purple-700"
-                  : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
-              )}
-            >
-              <FileText size={14} />
-              Handover
-            </button>
-
-            {/* 4. Live Feed */}
+            {/* Live Feed */}
             <div className="flex items-center gap-1.5 px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Live Feed</span>
