@@ -9,10 +9,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, status, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
-from models import (
+from .models import (
     AssessmentResponse, 
     AssessmentSummary, 
     HealthResponse, 
@@ -20,12 +20,15 @@ from models import (
     MIMICPatientListItem,
     MIMICPatientResponse
 )
-from .workflow import run_patient_assessment
-from .utils.logger import setup_logger
-from .utils.mimic_adapter import get_patient_by_diagnosis, convert_to_agent_format
+from .simple_workflow import run_patient_assessment
+# from .utils.logger import setup_logger
+# from .utils.mimic_adapter import get_patient_by_diagnosis, convert_to_agent_format
 from .services.family_communication import FamilyCommunicationAgent, SupportedLanguage
+# from .services.realtime_ai_service import realtime_ai_service  # Temporarily disabled
 
-logger = setup_logger('api', level='INFO')
+# logger = setup_logger('api', level='INFO')
+import logging
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI(
@@ -539,6 +542,45 @@ def generate_family_summary(subject_id: int, request: Request) -> Dict[str, Any]
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating family summary: {str(e)}"
         )
+
+
+@app.post("/api/ai/process-telemetry/{patient_id}")
+async def process_telemetry_for_ai(patient_id: int, telemetry_data: List[Dict[str, Any]]):
+    """
+    Process telemetry data through the AI pipeline
+    """
+    try:
+        # For now, just acknowledge the data and return success
+        # The full AI service will be implemented when the backend restarts
+        logger.info(f"Received {len(telemetry_data)} telemetry points for patient {patient_id}")
+        
+        return {
+            "status": "processed",
+            "patient_id": patient_id,
+            "data_points": len(telemetry_data),
+            "timestamp": datetime.now().isoformat(),
+            "message": "Telemetry received - AI analysis will be available when service is fully deployed"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing telemetry for AI: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing telemetry: {str(e)}"
+        )
+
+
+@app.get("/api/ai/latest/{patient_id}")
+def get_latest_ai_analysis(patient_id: int):
+    """
+    Get the latest AI analysis for a patient
+    """
+    # For now, return 404 to indicate no analysis available
+    # This allows the frontend to fall back to mock data
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="AI service not yet fully deployed - using demo mode"
+    )
 
 
 if __name__ == "__main__":

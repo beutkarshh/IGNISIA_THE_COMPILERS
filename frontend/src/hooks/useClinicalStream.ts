@@ -12,6 +12,55 @@ export interface VitalRecord {
   is_outlier: boolean;
 }
 
+// AI Pipeline Integration
+let aiDataBuffer: Record<number, VitalRecord[]> = {};
+let aiBufferCounts: Record<number, number> = {};
+const AI_BUFFER_SIZE = 3; // Process every 3 data points
+
+const sendToAIPipeline = async (record: VitalRecord) => {
+  const patientId = record.subject_id;
+  
+  // Initialize buffer for patient if needed
+  if (!aiDataBuffer[patientId]) {
+    aiDataBuffer[patientId] = [];
+    aiBufferCounts[patientId] = 0;
+  }
+  
+  // Add to buffer
+  aiDataBuffer[patientId].push(record);
+  aiBufferCounts[patientId]++;
+  
+  // Process if we have enough data points
+  if (aiBufferCounts[patientId] >= AI_BUFFER_SIZE) {
+    try {
+      const telemetryBatch = [...aiDataBuffer[patientId]];
+      
+      // Send to AI service
+      const response = await fetch(`/api/ai/process-telemetry/${patientId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(telemetryBatch)
+      });
+      
+      if (response.ok) {
+        console.log(`[AI Pipeline] Processed ${telemetryBatch.length} data points for patient ${patientId}`);
+      } else {
+        console.warn(`[AI Pipeline] Failed to process data for patient ${patientId}`);
+      }
+      
+      // Reset buffer
+      aiDataBuffer[patientId] = [];
+      aiBufferCounts[patientId] = 0;
+      
+    } catch (error) {
+      console.error('[AI Pipeline] Error sending telemetry data:', error);
+      // Reset buffer on error to prevent infinite accumulation
+      aiDataBuffer[patientId] = [];
+      aiBufferCounts[patientId] = 0;
+    }
+  }
+};
+
 export function useClinicalStream(subjectIds: number[]) {
   const [vitals, setVitals] = useState<Record<number, VitalRecord[]>>({});
   const vitalsRef = useRef<Record<number, VitalRecord[]>>({});
@@ -80,6 +129,9 @@ export function useClinicalStream(subjectIds: number[]) {
           current.push(rec);
           if (current.length > 150) current.shift();
           vitalsRef.current[sid] = current;
+          
+          // Send to AI pipeline for real-time analysis
+          sendToAIPipeline(rec);
         }
       )
       .subscribe((status) => {

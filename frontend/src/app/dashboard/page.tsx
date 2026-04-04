@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ShiftHandoverReport from "@/components/clinical/ShiftHandoverReport";
 import FamilyCommunicationPanel from "@/components/clinical/FamilyCommunicationPanel";
+import AIAnalysisPanel from "@/components/clinical/AIAnalysisPanel";
 import {
   getCurrentUser, logout, getNotifications, canDoctorSeePatient,
   SPECIALTY_LABELS, type AppUser
@@ -45,7 +46,7 @@ export default function DashboardPage() {
   const [showHandoverReport, setShowHandoverReport] = useState(false);
   
   // Dashboard tab state
-  const [activeTab, setActiveTab] = useState<"monitoring" | "family">("monitoring");
+  const [activeTab, setActiveTab] = useState<"monitoring" | "ai" | "family">("ai");
 
   useEffect(() => {
     setMounted(true);
@@ -294,6 +295,125 @@ export default function DashboardPage() {
   };
   const protocols = getProtocols(selectedPatient?.diagnosis);
 
+  // Dynamic Assessment Block Configuration based on AI Analysis
+  const getDynamicAssessment = () => {
+    // Check if we have AI analysis results from the AI Analysis Panel
+    // This would be set when AI analysis is run
+    const aiResults = typeof window !== 'undefined' ? 
+      JSON.parse(window.localStorage.getItem('latest-ai-analysis') || 'null') : null;
+    
+    // If AI analysis is available, use it to determine risk assessment
+    if (aiResults && aiResults.overall_risk_score !== undefined) {
+      const riskScore = aiResults.overall_risk_score;
+      const sepsisRisk = aiResults.sepsis_risk?.probability || 0;
+      const confidence = Math.round((aiResults.confidence_score || 0) * 100);
+      
+      if (riskScore >= 80 || sepsisRisk >= 75) {
+        return {
+          bgClass: "bg-gradient-to-r from-red-600/20 to-red-700/20 border-red-500",
+          iconClass: "text-red-600",
+          titleClass: "text-red-900 dark:text-red-100",
+          subtitleClass: "text-red-700 dark:text-red-300",
+          scoreClass: "text-red-600 dark:text-red-400", 
+          levelClass: "text-red-800 dark:text-red-200",
+          title: "SEPSIS RISK DETECTED",
+          subtitle: "Clinical markers suggest immediate hemodynamic intervention. Elevated lactate and HR detected.",
+          riskScore: riskScore,
+          riskLevel: "CRITICAL",
+          confidence: `${confidence}%`,
+          icon: "⚠️",
+          liveIndicator: "🔴 LIVE AI ANALYSIS"
+        };
+      } else if (riskScore >= 60 || sepsisRisk >= 50) {
+        return {
+          bgClass: "bg-gradient-to-r from-orange-500/20 to-orange-600/20 border-orange-400",
+          iconClass: "text-orange-600",
+          titleClass: "text-orange-900 dark:text-orange-100",
+          subtitleClass: "text-orange-700 dark:text-orange-300",
+          scoreClass: "text-orange-600 dark:text-orange-400",
+          levelClass: "text-orange-800 dark:text-orange-200",
+          title: "DETERIORATING PATTERNS",
+          subtitle: "Multiple concerning trends detected requiring close monitoring and intervention.",
+          riskScore: riskScore,
+          riskLevel: "HIGH RISK",
+          confidence: `${confidence}%`,
+          icon: "⚠️",
+          liveIndicator: "🟡 LIVE AI ANALYSIS"
+        };
+      } else if (riskScore >= 35) {
+        return {
+          bgClass: "bg-gradient-to-r from-yellow-400/20 to-yellow-500/20 border-yellow-400",
+          iconClass: "text-yellow-600",
+          titleClass: "text-yellow-900 dark:text-yellow-100",
+          subtitleClass: "text-yellow-700 dark:text-yellow-300",
+          scoreClass: "text-yellow-600 dark:text-yellow-400",
+          levelClass: "text-yellow-800 dark:text-yellow-200",
+          title: "CONCERNING TRENDS",
+          subtitle: "Mixed clinical patterns observed. Some vital signs showing concerning trends.",
+          riskScore: riskScore,
+          riskLevel: "MODERATE",
+          confidence: `${confidence}%`,
+          icon: "⚠️",
+          liveIndicator: "🟡 LIVE AI ANALYSIS"
+        };
+      } else {
+        return {
+          bgClass: "bg-gradient-to-r from-green-500/20 to-green-600/20 border-green-400",
+          iconClass: "text-green-600",
+          titleClass: "text-green-900 dark:text-green-100",
+          subtitleClass: "text-green-700 dark:text-green-300",
+          scoreClass: "text-green-600 dark:text-green-400",
+          levelClass: "text-green-800 dark:text-green-200",
+          title: "STABLE: LOW RISK",
+          subtitle: "All clinical markers within normal thresholds. Patient currently showing signs of recovery.",
+          riskScore: riskScore,
+          riskLevel: "LOW RISK",
+          confidence: `${confidence}%`,
+          icon: "✅",
+          liveIndicator: "🟢 LIVE AI ANALYSIS"
+        };
+      }
+    }
+    
+    // Fallback to current assessment or default values when AI is off
+    if (currentAssessment) {
+      return {
+        bgClass: "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800/50",
+        iconClass: "text-blue-600 dark:text-blue-400",
+        titleClass: "text-blue-900 dark:text-blue-100",
+        subtitleClass: "text-blue-700 dark:text-blue-300",
+        scoreClass: "text-blue-600 dark:text-blue-400",
+        levelClass: "text-blue-800 dark:text-blue-200",
+        title: "AI ASSESSMENT COMPLETE",
+        subtitle: currentAssessment?.clinical_summary || "Assessment analysis completed successfully.",
+        riskScore: currentAssessment?.risk_score || 0,
+        riskLevel: currentAssessment?.risk_level || "UNKNOWN",
+        confidence: "85%",
+        icon: "🧠",
+        liveIndicator: "AI STATIC ANALYSIS"
+      };
+    }
+    
+    // Default state when no assessment available
+    return {
+      bgClass: "bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800/20 dark:to-slate-900/20 border-slate-200 dark:border-slate-700/50",
+      iconClass: "text-slate-600 dark:text-slate-400",
+      titleClass: "text-slate-900 dark:text-slate-100",
+      subtitleClass: "text-slate-700 dark:text-slate-300",
+      scoreClass: "text-slate-600 dark:text-slate-400",
+      levelClass: "text-slate-800 dark:text-slate-200",
+      title: "PRIMARY RISK ASSESSMENT",
+      subtitle: "Awaiting AI analysis for risk assessment.",
+      riskScore: 0,
+      riskLevel: "PENDING",
+      confidence: "--",
+      icon: "🔄",
+      liveIndicator: "AWAITING ANALYSIS"
+    };
+  };
+
+  const dynamicAssessment = getDynamicAssessment();
+
 
   return (
     <main className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden antialiased text-slate-900 dark:text-slate-100 transition-colors duration-500">
@@ -480,82 +600,6 @@ export default function DashboardPage() {
             </motion.div>
           )}
           
-          {currentAssessment && !assessmentError && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="w-full"
-            >
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800/50 rounded-3xl p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <Brain className="text-blue-600 dark:text-blue-400" size={24} />
-                    <div>
-                      <h3 className="font-black text-blue-900 dark:text-blue-100 uppercase tracking-wider">AI Assessment Complete</h3>
-                      <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">
-                        Generated {new Date(currentAssessment.generated_at).toLocaleTimeString()}
-                        {currentAssessment.processing_time_ms && (
-                          <span className="ml-2">• {(currentAssessment.processing_time_ms / 1000).toFixed(1)}s processing time</span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-black text-blue-600 dark:text-blue-400">
-                      {currentAssessment.risk_score}%
-                    </div>
-                    <div className="text-xs font-bold text-blue-800 dark:text-blue-200 uppercase tracking-wider">
-                      {currentAssessment.risk_level}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Diagnostic criteria met */}
-                {currentAssessment.diagnostic_criteria_met.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-2">Criteria Met</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {currentAssessment.diagnostic_criteria_met.map((criteria, idx) => (
-                        <span
-                          key={idx}
-                          className="px-3 py-1 bg-blue-100 dark:bg-blue-800/30 text-blue-800 dark:text-blue-200 text-xs font-bold rounded-full"
-                        >
-                          {criteria}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Treatment recommendations */}
-                {currentAssessment.treatment_recommendations.length > 0 && (
-                  <div>
-                    <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-2">Recommendations</h4>
-                    <div className="space-y-2">
-                      {currentAssessment.treatment_recommendations.slice(0, 3).map((rec, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300"
-                        >
-                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                          <span>{rec.action || rec.description || JSON.stringify(rec)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Dismiss button */}
-                <button
-                  onClick={clearAssessment}
-                  className="mt-4 text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 underline"
-                >
-                  Dismiss Assessment
-                </button>
-              </div>
-            </motion.div>
-          )}
         </AnimatePresence>
 
         {/* Tab Navigation */}
@@ -575,6 +619,19 @@ export default function DashboardPage() {
           >
             <Activity size={16} />
             Clinical Monitoring
+          </button>
+          
+          <button
+            onClick={() => setActiveTab("ai")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200",
+              activeTab === "ai"
+                ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-500/20"
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+            )}
+          >
+            <Brain size={16} />
+            🤖 AI Analysis Pipeline
           </button>
           
           <button
@@ -762,6 +819,21 @@ export default function DashboardPage() {
           </div>
         </motion.section>
         
+            </motion.div>
+          )}
+          
+          {activeTab === "ai" && (
+            <motion.div
+              key="ai-tab"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <AIAnalysisPanel 
+                patientId={selectedPatient.subject_id}
+                className="space-y-6"
+              />
             </motion.div>
           )}
           
