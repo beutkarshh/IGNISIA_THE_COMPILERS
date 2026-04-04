@@ -32,6 +32,9 @@ export function VitalTrend({
   // Debug logging
   React.useEffect(() => {
     console.log(`[VitalTrend] ${label} received ${data.length} data points:`, data.slice(0, 3));
+    if (data.length > 0) {
+      console.log(`[VitalTrend] ${label} sample data structure:`, data[0]);
+    }
   }, [data, label]);
 
   // Scrolling window — always show last DISPLAY_POINTS values
@@ -41,7 +44,10 @@ export function VitalTrend({
   );
 
   const { polylinePoints, areaPath, yLabels, gridYs, latestY, dotX } = useMemo(() => {
+    console.log(`[VitalTrend] ${label} processing window with ${window.length} points`);
+    
     if (window.length < 2) {
+      console.log(`[VitalTrend] ${label} insufficient window data (${window.length} < 2)`);
       return { polylinePoints: "", areaPath: "", yLabels: [], gridYs: [], latestY: H / 2, dotX: W };
     }
 
@@ -52,6 +58,8 @@ export function VitalTrend({
       !isNaN(d.valuenum) && 
       isFinite(d.valuenum)
     );
+    
+    console.log(`[VitalTrend] ${label} valid data after filtering: ${validData.length}/${window.length} points`);
 
     if (validData.length < 2) {
       return { polylinePoints: "", areaPath: "", yLabels: [], gridYs: [], latestY: H / 2, dotX: W };

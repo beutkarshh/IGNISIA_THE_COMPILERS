@@ -7,12 +7,14 @@ import { useClinicalStream } from "@/hooks/useClinicalStream";
 import { useClinicalData } from "@/hooks/useClinicalData";
 import {
   Activity, Thermometer, Wind, ClipboardList, Database, Zap,
-  SunMoon, Bed, Sun, LogOut, BarChart2, Brain, Loader2, AlertTriangle
+  SunMoon, Bed, Sun, LogOut, BarChart2, Brain, Loader2, AlertTriangle,
+  FileText, Clock, X
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import ShiftHandoverReport from "@/components/clinical/ShiftHandoverReport";
 import {
   getCurrentUser, logout, getNotifications, canDoctorSeePatient,
   SPECIALTY_LABELS, type AppUser
@@ -37,6 +39,9 @@ export default function DashboardPage() {
   const [currentAssessment, setCurrentAssessment] = useState<AssessmentResponse | null>(null);
   const [assessmentError, setAssessmentError] = useState<string | null>(null);
   const [assessmentHistory, setAssessmentHistory] = useState<Record<number, AssessmentResponse>>({});
+  
+  // Shift handover report state
+  const [showHandoverReport, setShowHandoverReport] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -65,7 +70,7 @@ export default function DashboardPage() {
   const visiblePatients = useMemo(() => {
     if (!currentUser) return patients;
     if (currentUser.role === "admin") return patients;
-    return patients.filter(p => canDoctorSeePatient(currentUser.specialty || "general", p.diagnosis || ""));
+    return patients.filter(p => canDoctorSeePatient(currentUser.specialty || "intensivist", p.diagnosis || ""));
   }, [patients, currentUser]);
 
   // Get vitals data for all patients - this must be called before any conditional returns
@@ -400,13 +405,29 @@ export default function DashboardPage() {
               )}
             </button>
 
-            {/* 3. Live Feed */}
+            {/* 3. Shift Handover Report */}
+            <button 
+              onClick={() => setShowHandoverReport(true)}
+              disabled={!selectedPatient}
+              title="Generate Shift Handover Report"
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-sm transition-all duration-200 border",
+                selectedPatient
+                  ? "bg-purple-600 border-purple-600 text-white hover:bg-purple-700"
+                  : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
+              )}
+            >
+              <FileText size={14} />
+              Handover
+            </button>
+
+            {/* 4. Live Feed */}
             <div className="flex items-center gap-1.5 px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Live Feed</span>
             </div>
 
-            {/* 4. Theme toggle */}
+            {/* 5. Theme toggle */}
             <button onClick={toggleTheme} title={theme === "dark" ? "Light Mode" : "Dark Mode"}
               className="w-10 h-10 flex items-center justify-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
               {theme === "dark" ? <Sun size={15} className="text-amber-500" /> : <SunMoon size={15} className="text-blue-600" />}
@@ -692,6 +713,51 @@ export default function DashboardPage() {
           </div>
         </motion.section>
       </div>
+
+      {/* Shift Handover Report Modal */}
+      <AnimatePresence>
+        {showHandoverReport && selectedPatient && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowHandoverReport(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-6 border-b border-slate-200">
+                <h2 className="text-xl font-bold text-slate-900">
+                  Shift Handover Report - {selectedPatient.subject_id}
+                </h2>
+                <button
+                  onClick={() => setShowHandoverReport(false)}
+                  className="w-10 h-10 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="overflow-y-auto max-h-[calc(90vh-120px)]">
+                <div className="p-6">
+                  <ShiftHandoverReport
+                    patient={selectedPatient}
+                    vitals={currentVitals}
+                    onPrintReport={() => window.print()}
+                  />
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }
