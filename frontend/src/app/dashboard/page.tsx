@@ -8,13 +8,14 @@ import { useClinicalData } from "@/hooks/useClinicalData";
 import {
   Activity, Thermometer, Wind, ClipboardList, Database, Zap,
   SunMoon, Bed, Sun, LogOut, BarChart2, Brain, Loader2, AlertTriangle,
-  FileText, Clock, X
+  FileText, Clock, X, Heart
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ShiftHandoverReport from "@/components/clinical/ShiftHandoverReport";
+import FamilyCommunicationPanel from "@/components/clinical/FamilyCommunicationPanel";
 import {
   getCurrentUser, logout, getNotifications, canDoctorSeePatient,
   SPECIALTY_LABELS, type AppUser
@@ -42,6 +43,9 @@ export default function DashboardPage() {
   
   // Shift handover report state
   const [showHandoverReport, setShowHandoverReport] = useState(false);
+  
+  // Dashboard tab state
+  const [activeTab, setActiveTab] = useState<"monitoring" | "family">("monitoring");
 
   useEffect(() => {
     setMounted(true);
@@ -554,6 +558,51 @@ export default function DashboardPage() {
           )}
         </AnimatePresence>
 
+        {/* Tab Navigation */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-1 bg-white dark:bg-slate-900 rounded-2xl p-2 border border-slate-200 dark:border-slate-800 shadow-sm"
+        >
+          <button
+            onClick={() => setActiveTab("monitoring")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200",
+              activeTab === "monitoring"
+                ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20"
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+            )}
+          >
+            <Activity size={16} />
+            Clinical Monitoring
+          </button>
+          
+          <button
+            onClick={() => setActiveTab("family")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200",
+              activeTab === "family"
+                ? "bg-green-600 text-white shadow-lg shadow-green-500/20"
+                : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+            )}
+          >
+            <Heart size={16} />
+            Family Communication
+          </button>
+        </motion.div>
+
+        {/* Tab Content */}
+        <AnimatePresence mode="wait">
+          {activeTab === "monitoring" && (
+            <motion.div
+              key="monitoring-tab"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+              className="space-y-8"
+            >
+
         {/* ── Live Vitals Strip — all values from injected telemetry ── */}
         <motion.div
           key={`vitals-strip-${selectedPatient.subject_id}`}
@@ -712,6 +761,26 @@ export default function DashboardPage() {
             </div>
           </div>
         </motion.section>
+        
+            </motion.div>
+          )}
+          
+          {activeTab === "family" && (
+            <motion.div
+              key="family-tab"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <FamilyCommunicationPanel 
+                patientId={selectedPatient.subject_id}
+                className="space-y-6"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+        
       </div>
 
       {/* Shift Handover Report Modal */}

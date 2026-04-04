@@ -12,7 +12,7 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
-from backend.models import (
+from models import (
     AssessmentResponse, 
     AssessmentSummary, 
     HealthResponse, 
@@ -20,9 +20,10 @@ from backend.models import (
     MIMICPatientListItem,
     MIMICPatientResponse
 )
-from backend.workflow import run_patient_assessment
-from utils.logger import setup_logger
-from utils.mimic_adapter import get_patient_by_diagnosis, convert_to_agent_format
+from .workflow import run_patient_assessment
+from .utils.logger import setup_logger
+from .utils.mimic_adapter import get_patient_by_diagnosis, convert_to_agent_format
+from .services.family_communication import FamilyCommunicationAgent, SupportedLanguage
 
 logger = setup_logger('api', level='INFO')
 
@@ -344,6 +345,119 @@ def assess_mimic_patient(
         )
 
 
+@app.post("/patients/{subject_id}/family-summary")
+def generate_family_summary(
+    subject_id: int,
+    languages: Optional[List[str]] = ["en", "hi"]
+) -> Dict[str, Any]:
+    """
+    Generate a hopeful, family-friendly summary of patient's condition.
+    
+    This endpoint transforms technical medical assessments into compassionate,
+    easy-to-understand summaries for patient families, with multilingual support.
+    
+    Args:
+        subject_id: MIMIC-III subject ID
+        languages: List of language codes (default: ["en", "hi"])
+        
+    Returns:
+        Family-friendly summary with hopeful messaging and translations
+    """
+    logger.info(f"Generating family summary for patient: {subject_id}")
+    
+    try:
+        # Fetch patient data from Supabase
+        patient_data = convert_to_agent_format(subject_id)
+        
+        if not patient_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Patient {subject_id} not found in MIMIC-III database"
+            )
+        
+        # Run assessment to get current clinical status
+        assessment_result = run_patient_assessment(patient_data)
+        
+        # Convert language codes to SupportedLanguage enums
+        supported_languages = []
+        for lang_code in languages:
+            try:
+                lang_enum = SupportedLanguage(lang_code)
+                supported_languages.append(lang_enum)
+            except ValueError:
+                logger.warning(f"Unsupported language code: {lang_code}")
+                continue
+        
+        # Fallback to English if no supported languages
+        if not supported_languages:
+            supported_languages = [SupportedLanguage.ENGLISH]
+        
+        # Initialize family communication agent
+        family_agent = FamilyCommunicationAgent()
+        
+        # Generate family-friendly summary
+        family_communication = family_agent.generate_family_summary(
+            patient_data=patient_data,
+            assessment_result=assessment_result.model_dump(),
+            target_languages=supported_languages
+        )
+        
+        # Format response
+        return {
+            "status": "success",
+            "patient_id": subject_id,
+            "timestamp": family_communication.timestamp,
+            "diagnosis_summary": family_communication.diagnosis_summary,
+            "confidence_level": family_communication.confidence_level.value,
+            "confidence_score": family_communication.confidence_score,
+            "stability_status": family_communication.stability_status,
+            "messages": {
+                "hopeful_message": family_communication.hopeful_message,
+                "care_emphasis": family_communication.care_emphasis,
+                "next_steps": family_communication.next_steps
+            },
+            "supported_languages": [lang.value for lang in supported_languages]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating family summary for patient {subject_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Family summary generation failed: {str(e)}"
+        )
+
+
+@app.get("/family-communication/languages")
+def get_supported_languages() -> Dict[str, Any]:
+    """
+    Get list of supported languages for family communication.
+    
+    Returns:
+        List of supported language codes and names
+    """
+    languages = {}
+    for lang in SupportedLanguage:
+        language_names = {
+            "en": "English",
+            "hi": "हिंदी (Hindi)", 
+            "bn": "বাংলা (Bengali)",
+            "te": "తెలుగు (Telugu)",
+            "mr": "मराठी (Marathi)",
+            "ta": "தமிழ் (Tamil)",
+            "gu": "ગુજરાતી (Gujarati)",
+            "kn": "ಕನ್ನಡ (Kannada)",
+            "ml": "മലയാളം (Malayalam)",
+            "pa": "ਪੰਜਾਬੀ (Punjabi)"
+        }
+        languages[lang.value] = language_names.get(lang.value, lang.value)
+    
+    return {
+        "status": "success",
+        "supported_languages": languages,
+        "total_count": len(languages)
+    }
+
+
 @app.get("/mimic/telemetry")
 def get_live_telemetry(limit: int = 50):
     """
@@ -390,6 +504,40 @@ def get_live_telemetry(limit: int = 50):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching telemetry: {str(e)}"
+        )
+
+
+@app.post("/patients/{subject_id}/family-summary")
+def generate_family_summary(subject_id: int, request: Request) -> Dict[str, Any]:
+    """
+    Generate a hopeful, family-friendly summary of patient's condition.
+    """
+    try:
+        # Mock family communication data for demo
+        return {
+            "patient_id": str(subject_id),
+            "timestamp": "2026-04-04T00:46:00Z",
+            "stability_status": "stable_monitored",
+            "confidence_level": "high",
+            "confidence_score": 95.0,
+            "hopeful_summary": {
+                "en": f"Your loved one (Patient #{subject_id}) is receiving excellent care in our ICU. The medical team is closely monitoring their condition, which is showing positive stability. The treatment plan is working well, and we are confident about their progress. Our specialized nursing staff is providing around-the-clock care to ensure their comfort and recovery.",
+                "hi": f"आपके प्रियजन (मरीज़ #{subject_id}) को हमारे आईसीयू में उत्कृष्ट देखभाल मिल रही है। चिकित्सा टीम उनकी स्थिति की बारीकी से निगरानी कर रही है, जो सकारात्मक स्थिरता दिखा रही है। उपचार योजना अच्छी तरह से काम कर रही है, और हम उनकी प्रगति के बारे में आश्वस्त हैं।"
+            },
+            "care_emphasis": {
+                "en": "Our experienced ICU team is providing continuous monitoring and specialized care tailored to your loved one's needs.",
+                "hi": "हमारी अनुभवी आईसीयू टीम आपके प्रियजन की आवश्यकताओं के अनुसार निरंतर निगरानी और विशेष देखभाल प्रदान कर रही है।"
+            },
+            "next_steps": {
+                "en": "Continue current treatment plan with regular monitoring. Family can visit during designated hours.",
+                "hi": "नियमित निगरानी के साथ वर्तमान उपचार योजना जारी रखें। परिवार निर्धारित घंटों के दौरान मिल सकता है।"
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error generating family summary for {subject_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating family summary: {str(e)}"
         )
 
 
