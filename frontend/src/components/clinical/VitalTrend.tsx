@@ -22,7 +22,8 @@ interface VitalTrendProps {
 
 const W = 400;
 const H = 100;
-const DISPLAY_POINTS = 30; // how many points to show in the scrolling window
+const DISPLAY_POINTS = 720; // 2 hours at 10-second intervals (2hrs * 360 points per hour)
+const INTERVAL_SECONDS = 10; // Data points every 10 seconds
 
 export function VitalTrend({
   label, unit, color, data,
@@ -251,6 +252,41 @@ export function VitalTrend({
               )}
             </svg>
           )}
+        </div>
+        
+        {/* X-axis (Time) labels */}
+        <div className="relative mt-2 h-4">
+          <div className="absolute left-10 right-0 flex justify-between items-center">
+            {Array.from({ length: 7 }, (_, i) => {
+              const totalMinutes = 120; // 2 hours
+              const minutesFromEnd = (6 - i) * (totalMinutes / 6); // Divide into 6 segments
+              const hoursFromEnd = minutesFromEnd / 60;
+              const isCurrentTime = i === 6;
+              
+              return (
+                <span 
+                  key={i} 
+                  className={cn(
+                    "text-[9px] font-black uppercase tracking-wider leading-none",
+                    isCurrentTime 
+                      ? "text-slate-600 dark:text-slate-300" 
+                      : "text-slate-400 dark:text-slate-500"
+                  )}
+                >
+                  {isCurrentTime ? "NOW" : 
+                   hoursFromEnd >= 1 ? `-${Math.floor(hoursFromEnd)}h${minutesFromEnd % 60 > 0 ? Math.floor(minutesFromEnd % 60) + 'm' : ''}` :
+                   `-${Math.floor(minutesFromEnd)}m`}
+                </span>
+              );
+            })}
+          </div>
+          
+          {/* Time interval indicator */}
+          <div className="absolute right-0 top-0">
+            <span className="text-[8px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">
+              10s intervals
+            </span>
+          </div>
         </div>
       </div>
     </motion.div>
